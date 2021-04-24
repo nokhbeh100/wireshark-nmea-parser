@@ -25,11 +25,13 @@ static int hf_nmea_payload = -1;
 static int hf_nmea_msgtype = -1;
 
 static int hf_nmea_mmsi = -1;
+static int hf_nmea_navstat = -1;
 static int hf_nmea_rot = -1;
 static int hf_nmea_sog = -1;
 static int hf_nmea_lon = -1;
 static int hf_nmea_lat = -1;
 static int hf_nmea_cog = -1;
+static int hf_nmea_hdg = -1;
 
 
 
@@ -38,6 +40,27 @@ guint8 processed_payload[128];
 
 static dissector_handle_t nmea_handle;
 static dissector_handle_t ais_handle;
+
+static const value_string vals_nav_stat[] = {
+    { 0, "Under way using engine" },
+    { 1, "At anchor" },
+    { 2, "Not under command" },
+    { 3, "Restricted manoeuverability" },
+    { 4, "Constrained by her draught" },
+    { 5, "Moored" },
+    { 6, "Aground" },
+    { 7, "Engaged in Fishing" },
+    { 8, "Under way sailing" },
+    { 9, "Reserved for future amendment of Navigational Status for HSC" },
+    { 10, "Reserved for future amendment of Navigational Status for WIG" },
+    { 11, "Reserved for future use" },
+    { 12, "Reserved for future use" },
+    { 13, "Reserved for future use" },
+    { 14, "AIS-SART is active" },
+    { 15, "Not defined (default)" },
+    { 0, NULL },
+};
+
 
 static void
 I3(gchar *buf, gint32 value) {
@@ -78,6 +101,7 @@ dissect_ais(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
         start += 2; // repeat indicator
         proto_tree_add_bits_item(ais_tree, hf_nmea_mmsi, tvb, start, 30, ENC_BIG_ENDIAN);
         start += 30; // MMSI
+        proto_tree_add_bits_item(ais_tree, hf_nmea_navstat, tvb, start, 4, ENC_BIG_ENDIAN);
         start += 4; // navigation status
         proto_tree_add_bits_item(ais_tree, hf_nmea_rot, tvb, start, 8, ENC_BIG_ENDIAN);
         start += 8; // Rate of Turn
@@ -90,6 +114,7 @@ dissect_ais(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
         start += 27; // lat
         proto_tree_add_bits_item(ais_tree, hf_nmea_cog, tvb, start, 12, ENC_BIG_ENDIAN);
         start += 12; // course over ground
+        proto_tree_add_bits_item(ais_tree, hf_nmea_hdg, tvb, start, 9, ENC_BIG_ENDIAN);
         start += 9; // heading
         start += 6; // timestamp
 
@@ -209,11 +234,13 @@ proto_register_nmea(void)
       {
           { &hf_nmea_msgtype, { "Message Type", "nmea.msgtype", FT_UINT8, BASE_DEC, NULL, 0x0, "Message Type", HFILL} },
           { &hf_nmea_mmsi,    { "MMSI", "nmea.mmsi", FT_UINT32, BASE_DEC, NULL, 0x0, "MMSI", HFILL} },
+          { &hf_nmea_navstat,    { "Navigation Status", "nmea.navstat", FT_UINT32, BASE_CUSTOM, VALS(vals_nav_stat), 0x0, "MMSI", HFILL} },
           { &hf_nmea_rot,    { "Rate of Turn", "nmea.rot", FT_INT32, BASE_CUSTOM, CF_FUNC(I3), 0x0, "Rate of Turn", HFILL} },
           { &hf_nmea_sog,    { "Speed Over Ground", "nmea.sog", FT_UINT32, BASE_CUSTOM, CF_FUNC(U1), 0x0, "Speed Over Ground", HFILL} },
           { &hf_nmea_lon,    { "Longitude", "nmea.lon", FT_INT32, BASE_CUSTOM, CF_FUNC(I4deg), 0x0, "Longitude", HFILL} },
           { &hf_nmea_lat,    { "Lattitude", "nmea.lat", FT_INT32, BASE_CUSTOM, CF_FUNC(I4deg), 0x0, "Latitude", HFILL} },
           { &hf_nmea_cog,    { "Course Over Ground", "nmea.cog", FT_UINT32, BASE_CUSTOM, CF_FUNC(U1), 0x0, "Course Over Ground", HFILL} },
+          { &hf_nmea_hdg,    { "True Heading (HDG)", "nmea.hdg", FT_UINT32, BASE_DEC, NULL, 0x0, "True Heading", HFILL} },
 
     };
   proto_ais = proto_register_protocol("AIS packet data", "ais", "ais");
