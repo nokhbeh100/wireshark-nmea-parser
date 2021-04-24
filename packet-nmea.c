@@ -33,9 +33,23 @@ static int hf_nmea_lat = -1;
 static int hf_nmea_cog = -1;
 static int hf_nmea_hdg = -1;
 
+static int hf_nmea_imo = -1;
+static int hf_nmea_callsign = -1;
+static int hf_nmea_name = -1;
+static int hf_nmea_dest = -1;
+
 
 
 guint8 processed_payload[128];
+
+gchar sixBits[64] = {
+    '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O',
+    'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_',
+    ' ', '!', '\"', '#', '$', '%', '&', '\'', '(', ')', '*', '+', ',', '-', '.', '/',
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?'};
+
+
+static char str[1024];
 
 
 static dissector_handle_t nmea_handle;
@@ -76,6 +90,21 @@ static void
 U1(gchar *buf, guint32 value) {
         g_snprintf(buf, ITEM_LABEL_LENGTH, "%u.%01u", value / 10, value % 10);
 }
+
+proto_item *
+proto_tree_add_sixbit_string(proto_tree *tree, const int hfindex, tvbuff_t *tvb,
+             const guint bit_offset, const gint no_of_bits,
+             const guint encoding)
+{
+    int s = 0;
+    for (s = 0; (s < no_of_bits) &&  (bit_offset+s+6) < 8*tvb_captured_length(tvb); s+=6)
+    {
+        str[s/6] = sixBits[tvb_get_bits(tvb, bit_offset+s, 6, encoding)];
+    }
+    str[s/6] = 0;
+    return proto_tree_add_string(tree, hfindex, tvb, bit_offset/8, (s)/8, str);
+}
+
 
 static int
 dissect_ais(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
@@ -142,6 +171,35 @@ dissect_ais(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
         start += 10; // spare
         start += 1; // raim
         start += 19;
+        break;
+     case 5:
+        start += 2; // repeat indicator
+        proto_tree_add_bits_item(ais_tree, hf_nmea_mmsi, tvb, start, 30, ENC_BIG_ENDIAN);
+        start += 30; // MMSI
+        start += 2; // ais version
+        proto_tree_add_bits_item(ais_tree, hf_nmea_imo, tvb, start, 30, ENC_BIG_ENDIAN);
+        start += 30; // IMO
+        proto_tree_add_sixbit_string(ais_tree, hf_nmea_callsign, tvb, start, 42, ENC_BIG_ENDIAN);
+        start += 42; // call sign
+        proto_tree_add_sixbit_string(ais_tree, hf_nmea_name, tvb, start, 120, ENC_BIG_ENDIAN);
+        start += 120; // shipname
+        start += 8; // ship type
+        start += 9; // dimention to bow
+        start += 9; // dimention to stern
+        start += 6; // dimention to port
+        start += 6; // dimention to starboard
+        start += 4; // EPFD
+        start += 4; // ETA month
+        start += 5; // ETA day
+        start += 5; // ETA hour
+        start += 6; // ETA minute
+        start += 8; // Draught
+        proto_tree_add_sixbit_string(ais_tree, hf_nmea_dest, tvb, start, 120, ENC_BIG_ENDIAN);
+        start += 120; // shipname
+        start += 1; // dte
+        start += 1; // spare
+
+
         break;
     }
 
@@ -266,6 +324,10 @@ proto_register_nmea(void)
           { &hf_nmea_cog,     { "Course Over Ground", "nmea.cog", FT_UINT32, BASE_CUSTOM, CF_FUNC(U1), 0x0, "Course Over Ground", HFILL} },
           { &hf_nmea_hdg,     { "True Heading (HDG)", "nmea.hdg", FT_UINT32, BASE_DEC, NULL, 0x0, "True Heading", HFILL} },
 
+          { &hf_nmea_imo,    { "IMO", "nmea.imo", FT_UINT32, BASE_DEC, NULL, 0x0, "IMO", HFILL} },
+          { &hf_nmea_callsign, { "Call Sign", "nmea.callsign", FT_STRINGZ, STR_ASCII, NULL, 0x0, "Call Sign", HFILL} },
+          { &hf_nmea_name, { "Ship Name", "nmea.shipname", FT_STRINGZ, STR_ASCII, NULL, 0x0, "Ship Name", HFILL} },
+          { &hf_nmea_dest, { "Destination", "nmea.dest", FT_STRINGZ, STR_ASCII, NULL, 0x0, "Destination", HFILL} },
     };
   proto_ais = proto_register_protocol("AIS packet data", "ais", "ais");
   proto_register_subtree_array(ettais, array_length(ettais));
