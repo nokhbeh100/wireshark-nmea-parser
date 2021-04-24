@@ -22,22 +22,27 @@ static int hf_nmea_fragno = -1;
 static int hf_nmea_seqid = -1;
 static int hf_nmea_channel = -1;
 static int hf_nmea_payload = -1;
-static int hf_nmea_msgtype = -1;
 
-static int hf_nmea_mmsi = -1;
-static int hf_nmea_navstat = -1;
-static int hf_nmea_rot = -1;
-static int hf_nmea_sog = -1;
-static int hf_nmea_lon = -1;
-static int hf_nmea_lat = -1;
-static int hf_nmea_cog = -1;
-static int hf_nmea_hdg = -1;
 
-static int hf_nmea_imo = -1;
-static int hf_nmea_callsign = -1;
-static int hf_nmea_name = -1;
-static int hf_nmea_shptyp = -1;
-static int hf_nmea_dest = -1;
+static int hf_ais_msgtype = -1;
+
+static int hf_ais_char = -1;
+
+static int hf_ais_mmsi = -1;
+static int hf_ais_navstat = -1;
+static int hf_ais_rot = -1;
+static int hf_ais_sog = -1;
+static int hf_ais_lon = -1;
+static int hf_ais_lat = -1;
+static int hf_ais_cog = -1;
+static int hf_ais_hdg = -1;
+
+static int hf_ais_imo = -1;
+static int hf_ais_callsign = -1;
+static int hf_ais_name = -1;
+static int hf_ais_shptyp = -1;
+static int hf_ais_dest = -1;
+
 
 
 
@@ -186,9 +191,11 @@ proto_tree_add_sixbit_string(proto_tree *tree, const int hfindex, tvbuff_t *tvb,
     for (s = 0; (s < no_of_bits) &&  (bit_offset+s+6) < 8*tvb_captured_length(tvb); s+=6)
     {
         str[s/6] = sixBits[tvb_get_bits(tvb, bit_offset+s, 6, encoding)];
+        // this is for debugging purposes
+        //proto_tree_add_bits_item(tree, hf_ais_char, tvb, bit_offset+s, 6, encoding);
     }
     str[s/6] = 0;
-    return proto_tree_add_string(tree, hfindex, tvb, bit_offset/8, (s)/8, str);
+    return proto_tree_add_string(tree, hfindex, tvb, bit_offset/8, (bit_offset+s+7)/8-bit_offset/8, str);
 }
 
 
@@ -208,28 +215,28 @@ dissect_ais(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 
     guint start = 0;
     guint msgtype = tvb_get_bits(tvb, 0, 6, ENC_BIG_ENDIAN);
-    proto_tree_add_bits_item(ais_tree, hf_nmea_msgtype, tvb, start, 6, ENC_BIG_ENDIAN);
+    proto_tree_add_bits_item(ais_tree, hf_ais_msgtype, tvb, start, 6, ENC_BIG_ENDIAN);
     start += 6;
 
     switch (msgtype) {
     case 1: case 2: case 3:
         start += 2; // repeat indicator
-        proto_tree_add_bits_item(ais_tree, hf_nmea_mmsi, tvb, start, 30, ENC_BIG_ENDIAN);
+        proto_tree_add_bits_item(ais_tree, hf_ais_mmsi, tvb, start, 30, ENC_BIG_ENDIAN);
         start += 30; // MMSI
-        proto_tree_add_bits_item(ais_tree, hf_nmea_navstat, tvb, start, 4, ENC_BIG_ENDIAN);
+        proto_tree_add_bits_item(ais_tree, hf_ais_navstat, tvb, start, 4, ENC_BIG_ENDIAN);
         start += 4; // navigation status
-        proto_tree_add_bits_item(ais_tree, hf_nmea_rot, tvb, start, 8, ENC_BIG_ENDIAN);
+        proto_tree_add_bits_item(ais_tree, hf_ais_rot, tvb, start, 8, ENC_BIG_ENDIAN);
         start += 8; // Rate of Turn
-        proto_tree_add_bits_item(ais_tree, hf_nmea_sog, tvb, start, 10, ENC_BIG_ENDIAN);
+        proto_tree_add_bits_item(ais_tree, hf_ais_sog, tvb, start, 10, ENC_BIG_ENDIAN);
         start += 10; // speed over ground
         start += 1; // position accuracy
-        proto_tree_add_bits_item(ais_tree, hf_nmea_lon, tvb, start, 28, ENC_BIG_ENDIAN);
+        proto_tree_add_bits_item(ais_tree, hf_ais_lon, tvb, start, 28, ENC_BIG_ENDIAN);
         start += 28; // long
-        proto_tree_add_bits_item(ais_tree, hf_nmea_lat, tvb, start, 27, ENC_BIG_ENDIAN);
+        proto_tree_add_bits_item(ais_tree, hf_ais_lat, tvb, start, 27, ENC_BIG_ENDIAN);
         start += 27; // lat
-        proto_tree_add_bits_item(ais_tree, hf_nmea_cog, tvb, start, 12, ENC_BIG_ENDIAN);
+        proto_tree_add_bits_item(ais_tree, hf_ais_cog, tvb, start, 12, ENC_BIG_ENDIAN);
         start += 12; // course over ground
-        proto_tree_add_bits_item(ais_tree, hf_nmea_hdg, tvb, start, 9, ENC_BIG_ENDIAN);
+        proto_tree_add_bits_item(ais_tree, hf_ais_hdg, tvb, start, 9, ENC_BIG_ENDIAN);
         start += 9; // heading
         start += 6; // timestamp
         start += 2; // Maneuver Indicator
@@ -239,9 +246,9 @@ dissect_ais(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
         break;
     case 4:
         start += 2; // repeat indicator
-        proto_tree_add_bits_item(ais_tree, hf_nmea_mmsi, tvb, start, 30, ENC_BIG_ENDIAN);
+        proto_tree_add_bits_item(ais_tree, hf_ais_mmsi, tvb, start, 30, ENC_BIG_ENDIAN);
         start += 30; // MMSI
-        proto_tree_add_bits_item(ais_tree, hf_nmea_navstat, tvb, start, 4, ENC_BIG_ENDIAN);
+        proto_tree_add_bits_item(ais_tree, hf_ais_navstat, tvb, start, 4, ENC_BIG_ENDIAN);
         start += 14; // year
         start += 4; // month
         start += 5; // day
@@ -249,9 +256,9 @@ dissect_ais(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
         start += 6; // minute
         start += 6; // second
         start += 1; // quality
-        proto_tree_add_bits_item(ais_tree, hf_nmea_lon, tvb, start, 28, ENC_BIG_ENDIAN);
+        proto_tree_add_bits_item(ais_tree, hf_ais_lon, tvb, start, 28, ENC_BIG_ENDIAN);
         start += 28; // long
-        proto_tree_add_bits_item(ais_tree, hf_nmea_lat, tvb, start, 27, ENC_BIG_ENDIAN);
+        proto_tree_add_bits_item(ais_tree, hf_ais_lat, tvb, start, 27, ENC_BIG_ENDIAN);
         start += 27; // lat
         start += 4; // EPFS
         start += 10; // spare
@@ -260,16 +267,16 @@ dissect_ais(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
         break;
      case 5:
         start += 2; // repeat indicator
-        proto_tree_add_bits_item(ais_tree, hf_nmea_mmsi, tvb, start, 30, ENC_BIG_ENDIAN);
+        proto_tree_add_bits_item(ais_tree, hf_ais_mmsi, tvb, start, 30, ENC_BIG_ENDIAN);
         start += 30; // MMSI
         start += 2; // ais version
-        proto_tree_add_bits_item(ais_tree, hf_nmea_imo, tvb, start, 30, ENC_BIG_ENDIAN);
+        proto_tree_add_bits_item(ais_tree, hf_ais_imo, tvb, start, 30, ENC_BIG_ENDIAN);
         start += 30; // IMO
-        proto_tree_add_sixbit_string(ais_tree, hf_nmea_callsign, tvb, start, 42, ENC_BIG_ENDIAN);
+        proto_tree_add_sixbit_string(ais_tree, hf_ais_callsign, tvb, start, 42, ENC_BIG_ENDIAN);
         start += 42; // call sign
-        proto_tree_add_sixbit_string(ais_tree, hf_nmea_name, tvb, start, 120, ENC_BIG_ENDIAN);
+        proto_tree_add_sixbit_string(ais_tree, hf_ais_name, tvb, start, 120, ENC_BIG_ENDIAN);
         start += 120; // shipname
-        proto_tree_add_bits_item(ais_tree, hf_nmea_shptyp, tvb, start, 8, ENC_BIG_ENDIAN);
+        proto_tree_add_bits_item(ais_tree, hf_ais_shptyp, tvb, start, 8, ENC_BIG_ENDIAN);
         start += 8; // ship type
         start += 9; // dimention to bow
         start += 9; // dimention to stern
@@ -281,49 +288,49 @@ dissect_ais(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
         start += 5; // ETA hour
         start += 6; // ETA minute
         start += 8; // Draught
-        proto_tree_add_sixbit_string(ais_tree, hf_nmea_dest, tvb, start, 120, ENC_BIG_ENDIAN);
+        proto_tree_add_sixbit_string(ais_tree, hf_ais_dest, tvb, start, 120, ENC_BIG_ENDIAN);
         start += 120; // shipname
         start += 1; // dte
         start += 1; // spare
         break;
     case 18:
         start += 2; // repeat indicator
-        proto_tree_add_bits_item(ais_tree, hf_nmea_mmsi, tvb, start, 30, ENC_BIG_ENDIAN);
+        proto_tree_add_bits_item(ais_tree, hf_ais_mmsi, tvb, start, 30, ENC_BIG_ENDIAN);
         start += 30; // MMSI
         start += 8; // regional reserve
-        proto_tree_add_bits_item(ais_tree, hf_nmea_sog, tvb, start, 10, ENC_BIG_ENDIAN);
+        proto_tree_add_bits_item(ais_tree, hf_ais_sog, tvb, start, 10, ENC_BIG_ENDIAN);
         start += 10; // speed over ground
         start += 1; // position accuracy
-        proto_tree_add_bits_item(ais_tree, hf_nmea_lon, tvb, start, 28, ENC_BIG_ENDIAN);
+        proto_tree_add_bits_item(ais_tree, hf_ais_lon, tvb, start, 28, ENC_BIG_ENDIAN);
         start += 28; // long
-        proto_tree_add_bits_item(ais_tree, hf_nmea_lat, tvb, start, 27, ENC_BIG_ENDIAN);
+        proto_tree_add_bits_item(ais_tree, hf_ais_lat, tvb, start, 27, ENC_BIG_ENDIAN);
         start += 27; // lat
-        proto_tree_add_bits_item(ais_tree, hf_nmea_cog, tvb, start, 12, ENC_BIG_ENDIAN);
+        proto_tree_add_bits_item(ais_tree, hf_ais_cog, tvb, start, 12, ENC_BIG_ENDIAN);
         start += 12; // course over ground
-        proto_tree_add_bits_item(ais_tree, hf_nmea_hdg, tvb, start, 9, ENC_BIG_ENDIAN);
+        proto_tree_add_bits_item(ais_tree, hf_ais_hdg, tvb, start, 9, ENC_BIG_ENDIAN);
         start += 9; // heading
         start += 6; // timestamp
         start += 2; // regional reserve
         break;
      case 24:
         start += 2; // repeat indicator
-        proto_tree_add_bits_item(ais_tree, hf_nmea_mmsi, tvb, start, 30, ENC_BIG_ENDIAN);
+        proto_tree_add_bits_item(ais_tree, hf_ais_mmsi, tvb, start, 30, ENC_BIG_ENDIAN);
         start += 30; // MMSI
         start += 2; // part no
-        proto_tree_add_sixbit_string(ais_tree, hf_nmea_name, tvb, start, 120, ENC_BIG_ENDIAN);
+        proto_tree_add_sixbit_string(ais_tree, hf_ais_name, tvb, start, 120, ENC_BIG_ENDIAN);
         start += 120; // shipname
         start += 8; // spare
         start += 18; // vendor id
         start += 4; // unit mode code
         start += 20; // serial number
-        proto_tree_add_sixbit_string(ais_tree, hf_nmea_callsign, tvb, start, 42, ENC_BIG_ENDIAN);
+        proto_tree_add_sixbit_string(ais_tree, hf_ais_callsign, tvb, start, 42, ENC_BIG_ENDIAN);
         start += 42; // call sign
         start += 9; // dimention to bow
         start += 9; // dimention to stern
         start += 6; // dimention to port
         start += 6; // dimention to starboard
-        proto_tree_add_bits_item(ais_tree, hf_nmea_mmsi, tvb, start, 30, ENC_BIG_ENDIAN);
-        start += 30; // MMSI
+        proto_tree_add_bits_item(ais_tree, hf_ais_mmsi, tvb, start, 30, ENC_BIG_ENDIAN);
+        start += 30; // mother MMSI
         break;
 
     }
@@ -337,30 +344,58 @@ static int process_payload(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, 
     if (tvb_captured_length(tvb) == 0)
         return 0;
 
-    guint c = 0;
-    for (guint t = 0; 4*t < tvb_captured_length(tvb); t+=1)
-    {
-        c = tvb_get_guint8(tvb, 4*t)-48;
-        if (c>=48)
-            c -= 8;
-        processed_payload[3*t] = (c & 0x3F) << 2;
+    guint c = 0, inpFlag = 0, outFlag = 0, outPointer = -1;
+;
 
-        c = tvb_get_guint8(tvb, 4*t+1)-48;
+    for (guint t = 0; t < tvb_captured_length(tvb); t+=1)
+    {
+        c = tvb_get_guint8(tvb, t)-48;
         if (c>=48)
             c -= 8;
-        processed_payload[3*t] |= (c & 0x30) >> 4;
-        processed_payload[3*t+1] = (c & 0xF) << 4;
-        c = tvb_get_guint8(tvb, 4*t+2)-48;
-        if (c>=48)
-            c -= 8;
-        processed_payload[3*t+1] |= (c & 0x3C) >> 2;
-        processed_payload[3*t+2] = (c & 0x3) << 6;
-        c = tvb_get_guint8(tvb, 4*t+3)-48;
-        if (c>=48)
-            c -= 8;
-        processed_payload[3*t+2] |= (c & 0x3F);
+        inpFlag = 0x20;
+
+        while (inpFlag)
+        {
+            if (outFlag)
+            {
+                if (c & inpFlag)
+                    processed_payload[outPointer] |= outFlag;
+                outFlag >>= 1;
+                inpFlag >>= 1;
+            }
+            else
+            {
+                // going to next byte
+                outPointer++;
+                processed_payload[outPointer] = 0;
+                outFlag = 0x80;
+            }
+        }
     }
-    tvbuff_t *payload = tvb_new_child_real_data(tvb, processed_payload, tvb_captured_length(tvb)*3/4, tvb_captured_length(tvb)*3/4);
+
+//    for (guint t = 0; 4*t < tvb_captured_length(tvb); t+=1)
+//    {
+//        c = tvb_get_guint8(tvb, 4*t)-48;
+//        if (c>=48)
+//            c -= 8;
+//        processed_payload[3*t] = (c & 0x3F) << 2;
+
+//        c = tvb_get_guint8(tvb, 4*t+1)-48;
+//        if (c>=48)
+//            c -= 8;
+//        processed_payload[3*t] |= (c & 0x30) >> 4;
+//        processed_payload[3*t+1] = (c & 0xF) << 4;
+//        c = tvb_get_guint8(tvb, 4*t+2)-48;
+//        if (c>=48)
+//            c -= 8;
+//        processed_payload[3*t+1] |= (c & 0x3C) >> 2;
+//        processed_payload[3*t+2] = (c & 0x3) << 6;
+//        c = tvb_get_guint8(tvb, 4*t+3)-48;
+//        if (c>=48)
+//            c -= 8;
+//        processed_payload[3*t+2] |= (c & 0x3F);
+//    }
+    tvbuff_t *payload = tvb_new_child_real_data(tvb, processed_payload, outPointer+1, outPointer+1);
     add_new_data_source(pinfo, payload, "Mapped Data");
 
     dissect_ais(payload, pinfo, tree, NULL);
@@ -439,21 +474,23 @@ proto_register_nmea(void)
 
   static hf_register_info hf_ais[] =
       {
-          { &hf_nmea_msgtype, { "Message Type", "nmea.msgtype", FT_UINT8, BASE_DEC, NULL, 0x0, "Message Type", HFILL} },
-          { &hf_nmea_mmsi,    { "MMSI", "nmea.mmsi", FT_UINT32, BASE_DEC, NULL, 0x0, "MMSI", HFILL} },
-          { &hf_nmea_navstat, { "Navigation Status", "nmea.navstat", FT_UINT32, BASE_DEC, VALS(vals_nav_stat), 0x0, "MMSI", HFILL} },
-          { &hf_nmea_rot,     { "Rate of Turn", "nmea.rot", FT_INT32, BASE_CUSTOM, CF_FUNC(I3), 0x0, "Rate of Turn", HFILL} },
-          { &hf_nmea_sog,     { "Speed Over Ground", "nmea.sog", FT_UINT32, BASE_CUSTOM, CF_FUNC(U1), 0x0, "Speed Over Ground", HFILL} },
-          { &hf_nmea_lon,     { "Longitude", "nmea.lon", FT_INT32, BASE_CUSTOM, CF_FUNC(I4deg), 0x0, "Longitude", HFILL} },
-          { &hf_nmea_lat,     { "Lattitude", "nmea.lat", FT_INT32, BASE_CUSTOM, CF_FUNC(I4deg), 0x0, "Latitude", HFILL} },
-          { &hf_nmea_cog,     { "Course Over Ground", "nmea.cog", FT_UINT32, BASE_CUSTOM, CF_FUNC(U1), 0x0, "Course Over Ground", HFILL} },
-          { &hf_nmea_hdg,     { "True Heading (HDG)", "nmea.hdg", FT_UINT32, BASE_DEC, NULL, 0x0, "True Heading", HFILL} },
+          { &hf_ais_char, { "sixbit char", "ais.char", FT_UINT8, BASE_HEX, NULL, 0x0, "Char", HFILL} },
 
-          { &hf_nmea_imo,    { "IMO", "nmea.imo", FT_UINT32, BASE_DEC, NULL, 0x0, "IMO", HFILL} },
-          { &hf_nmea_callsign, { "Call Sign", "nmea.callsign", FT_STRINGZ, STR_ASCII, NULL, 0x0, "Call Sign", HFILL} },
-          { &hf_nmea_name, { "Ship Name", "nmea.shipname", FT_STRINGZ, STR_ASCII, NULL, 0x0, "Ship Name", HFILL} },
-          { &hf_nmea_shptyp, { "Ship Type", "nmea.shptyp", FT_UINT32, BASE_DEC, VALS(vals_ship_type), 0x0, "Ship Type", HFILL} },
-          { &hf_nmea_dest, { "Destination", "nmea.dest", FT_STRINGZ, STR_ASCII, NULL, 0x0, "Destination", HFILL} },
+          { &hf_ais_msgtype, { "Message Type", "ais.msgtype", FT_UINT8, BASE_DEC, NULL, 0x0, "Message Type", HFILL} },
+          { &hf_ais_mmsi,    { "MMSI", "ais.mmsi", FT_UINT32, BASE_DEC, NULL, 0x0, "MMSI", HFILL} },
+          { &hf_ais_navstat, { "Navigation Status", "ais.navstat", FT_UINT32, BASE_DEC, VALS(vals_nav_stat), 0x0, "MMSI", HFILL} },
+          { &hf_ais_rot,     { "Rate of Turn", "ais.rot", FT_INT32, BASE_CUSTOM, CF_FUNC(I3), 0x0, "Rate of Turn", HFILL} },
+          { &hf_ais_sog,     { "Speed Over Ground", "ais.sog", FT_UINT32, BASE_CUSTOM, CF_FUNC(U1), 0x0, "Speed Over Ground", HFILL} },
+          { &hf_ais_lon,     { "Longitude", "ais.lon", FT_INT32, BASE_CUSTOM, CF_FUNC(I4deg), 0x0, "Longitude", HFILL} },
+          { &hf_ais_lat,     { "Lattitude", "ais.lat", FT_INT32, BASE_CUSTOM, CF_FUNC(I4deg), 0x0, "Latitude", HFILL} },
+          { &hf_ais_cog,     { "Course Over Ground", "ais.cog", FT_UINT32, BASE_CUSTOM, CF_FUNC(U1), 0x0, "Course Over Ground", HFILL} },
+          { &hf_ais_hdg,     { "True Heading (HDG)", "ais.hdg", FT_UINT32, BASE_DEC, NULL, 0x0, "True Heading", HFILL} },
+
+          { &hf_ais_imo,    { "IMO", "ais.imo", FT_UINT32, BASE_DEC, NULL, 0x0, "IMO", HFILL} },
+          { &hf_ais_callsign, { "Call Sign", "ais.callsign", FT_STRINGZ, STR_ASCII, NULL, 0x0, "Call Sign", HFILL} },
+          { &hf_ais_name, { "Ship Name", "ais.shipname", FT_STRINGZ, STR_ASCII, NULL, 0x0, "Ship Name", HFILL} },
+          { &hf_ais_shptyp, { "Ship Type", "ais.shptyp", FT_UINT32, BASE_DEC, VALS(vals_ship_type), 0x0, "Ship Type", HFILL} },
+          { &hf_ais_dest, { "Destination", "ais.dest", FT_STRINGZ, STR_ASCII, NULL, 0x0, "Destination", HFILL} },
     };
   proto_ais = proto_register_protocol("AIS packet data", "ais", "ais");
   proto_register_subtree_array(ettais, array_length(ettais));
