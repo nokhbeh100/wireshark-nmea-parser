@@ -1,5 +1,5 @@
 /*
- * Based on https://gpsd.gitlab.io/gpsd/index.html
+ * Based on https://gpsd.gitlab.io/gpsd/AIVDM.html
  *
  */
 
@@ -11,8 +11,10 @@ void proto_register_nmea(void);
 void proto_reg_handoff_nmea(void);
 
 static int proto_nmea = -1;
+static int proto_ais = -1;
+
 static gint ett_nmea = -1;
-static gint ett_payload = -1;
+static gint ett_ais = -1;
 
 static int hf_nmea_identifier = -1;
 static int hf_nmea_fragments = -1;
@@ -23,11 +25,80 @@ static int hf_nmea_payload = -1;
 static int hf_nmea_msgtype = -1;
 
 static int hf_nmea_mmsi = -1;
+static int hf_nmea_rot = -1;
+static int hf_nmea_sog = -1;
+static int hf_nmea_lon = -1;
+static int hf_nmea_lat = -1;
+static int hf_nmea_cog = -1;
+
+
 
 guint8 processed_payload[128];
 
 
 static dissector_handle_t nmea_handle;
+static dissector_handle_t ais_handle;
+
+static void
+I3(gchar *buf, gint32 value) {
+        g_snprintf(buf, ITEM_LABEL_LENGTH, "%d.%03u", value / 1000, abs(value) % 1000);
+}
+
+static void
+I4deg(gchar *buf, gint32 value) {
+        g_snprintf(buf, ITEM_LABEL_LENGTH, "%.06f", value / 600000.);
+}
+
+static void
+U1(gchar *buf, guint32 value) {
+        g_snprintf(buf, ITEM_LABEL_LENGTH, "%u.%01u", value / 10, value % 10);
+}
+
+static int
+dissect_ais(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
+{
+
+    col_set_str(pinfo->cinfo, COL_PROTOCOL, "AIS");
+    col_set_str(pinfo->cinfo, COL_INFO, "AIS packet data");
+
+    proto_tree *ais_tree;
+    proto_item *ais_item;
+    ais_item = proto_tree_add_item(tree, proto_ais, tvb, 0, -1, ENC_NA);
+    ais_tree = proto_item_add_subtree(ais_item, ett_ais);
+
+
+
+    guint start = 0;
+    guint msgtype = tvb_get_bits(tvb, 0, 6, ENC_BIG_ENDIAN);
+    proto_tree_add_bits_item(ais_tree, hf_nmea_msgtype, tvb, start, 6, ENC_BIG_ENDIAN);
+    start += 6;
+
+    switch (msgtype) {
+        case 1: case 2: case 3:
+        start += 2; // repeat indicator
+        proto_tree_add_bits_item(ais_tree, hf_nmea_mmsi, tvb, start, 30, ENC_BIG_ENDIAN);
+        start += 30; // MMSI
+        start += 4; // navigation status
+        proto_tree_add_bits_item(ais_tree, hf_nmea_rot, tvb, start, 8, ENC_BIG_ENDIAN);
+        start += 8; // Rate of Turn
+        proto_tree_add_bits_item(ais_tree, hf_nmea_sog, tvb, start, 10, ENC_BIG_ENDIAN);
+        start += 10; // speed over ground
+        start += 1; // position accuracy
+        proto_tree_add_bits_item(ais_tree, hf_nmea_lon, tvb, start, 28, ENC_BIG_ENDIAN);
+        start += 28; // long
+        proto_tree_add_bits_item(ais_tree, hf_nmea_lat, tvb, start, 27, ENC_BIG_ENDIAN);
+        start += 27; // lat
+        proto_tree_add_bits_item(ais_tree, hf_nmea_cog, tvb, start, 12, ENC_BIG_ENDIAN);
+        start += 12; // course over ground
+        start += 9; // heading
+        start += 6; // timestamp
+
+        break;
+    }
+
+    return tvb_captured_length(tvb);
+}
+
 
 static int process_payload(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
@@ -60,30 +131,7 @@ static int process_payload(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, 
     tvbuff_t *payload = tvb_new_child_real_data(tvb, processed_payload, tvb_captured_length(tvb)*3/4, tvb_captured_length(tvb)*3/4);
     add_new_data_source(pinfo, payload, "Mapped Data");
 
-    guint start = 0;
-    guint msgtype = tvb_get_bits(payload, 0, 6, ENC_BIG_ENDIAN);
-    proto_tree_add_bits_item(tree, hf_nmea_msgtype, payload, start, 6, ENC_BIG_ENDIAN);
-    start += 6;
-
-    switch (msgtype) {
-        case 1:
-        start += 2; // repeat indicator
-        proto_tree_add_bits_item(tree, hf_nmea_mmsi, payload, start, 30, ENC_BIG_ENDIAN);
-        start += 30; // MMSI
-        start += 4; // navigation status
-        start += 8; // Rate of Turn
-        start += 10; // speed over ground
-        start += 1; // position accuracy
-        start += 28; // long
-        start += 27; // lat
-        start += 12; // course over ground
-        start += 9; // heading
-        start += 6; // timestamp
-
-
-
-        break;
-    }
+    dissect_ais(payload, pinfo, tree, NULL);
 
     return tvb_captured_length(tvb);
 }
@@ -123,12 +171,9 @@ dissect_nmea(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
   i = j+1;
 
   j = tvb_find_tvb(tvb, comma, i);
-  proto_tree *payload_tree;
-  proto_item *payload_item;
-  payload_item = proto_tree_add_item(nmea_tree, hf_nmea_payload, tvb, i, j-i, ENC_NA);
-  payload_tree = proto_item_add_subtree(payload_item, ett_payload);
+  proto_tree_add_item(nmea_tree, hf_nmea_payload, tvb, i, j-i, ENC_NA);
 
-  process_payload(tvb_new_subset_length(tvb, i, j-i), pinfo, payload_tree, NULL);
+  process_payload(tvb_new_subset_length(tvb, i, j-i), pinfo, tree, NULL);
   i = j+1;
 
   return tvb_captured_length(tvb);
@@ -139,7 +184,6 @@ proto_register_nmea(void)
 {
   static gint *ett[] = {
     &ett_nmea,
-    &ett_payload,
   };
 
   static hf_register_info hf_nmea[] =
@@ -150,15 +194,34 @@ proto_register_nmea(void)
           { &hf_nmea_seqid, { "Seq Id", "nmea.seqid", FT_STRING, STR_ASCII, NULL, 0x0, "Sequence Id", HFILL} },
           { &hf_nmea_channel, { "Channel", "nmea.chn", FT_STRING, STR_ASCII, NULL, 0x0, "Channel", HFILL} },
           { &hf_nmea_payload, { "Payload", "nmea.payload", FT_STRING, STR_ASCII, NULL, 0x0, "Payload", HFILL} },
-          { &hf_nmea_msgtype, { "Message Type", "nmea.msgtype", FT_UINT8, BASE_DEC, NULL, 0x0, "Message Type", HFILL} },
-          { &hf_nmea_mmsi,    { "MMSI", "nmea.mmsi", FT_UINT32, BASE_DEC, NULL, 0x0, "MMSI", HFILL} },
-
     };
   proto_nmea = proto_register_protocol("nmea packet data", "nmea", "nmea");
   proto_register_subtree_array(ett, array_length(ett));
   proto_register_field_array(proto_nmea, hf_nmea, array_length(hf_nmea));
 
   nmea_handle = register_dissector("nmea_udp", dissect_nmea, proto_nmea);
+
+  static gint *ettais[] = {
+    &ett_ais,
+  };
+
+  static hf_register_info hf_ais[] =
+      {
+          { &hf_nmea_msgtype, { "Message Type", "nmea.msgtype", FT_UINT8, BASE_DEC, NULL, 0x0, "Message Type", HFILL} },
+          { &hf_nmea_mmsi,    { "MMSI", "nmea.mmsi", FT_UINT32, BASE_DEC, NULL, 0x0, "MMSI", HFILL} },
+          { &hf_nmea_rot,    { "Rate of Turn", "nmea.rot", FT_INT32, BASE_CUSTOM, CF_FUNC(I3), 0x0, "Rate of Turn", HFILL} },
+          { &hf_nmea_sog,    { "Speed Over Ground", "nmea.sog", FT_UINT32, BASE_CUSTOM, CF_FUNC(U1), 0x0, "Speed Over Ground", HFILL} },
+          { &hf_nmea_lon,    { "Longitude", "nmea.lon", FT_INT32, BASE_CUSTOM, CF_FUNC(I4deg), 0x0, "Longitude", HFILL} },
+          { &hf_nmea_lat,    { "Lattitude", "nmea.lat", FT_INT32, BASE_CUSTOM, CF_FUNC(I4deg), 0x0, "Latitude", HFILL} },
+          { &hf_nmea_cog,    { "Course Over Ground", "nmea.cog", FT_UINT32, BASE_CUSTOM, CF_FUNC(U1), 0x0, "Course Over Ground", HFILL} },
+
+    };
+  proto_ais = proto_register_protocol("AIS packet data", "ais", "ais");
+  proto_register_subtree_array(ettais, array_length(ettais));
+  proto_register_field_array(proto_ais, hf_ais, array_length(hf_ais));
+
+  ais_handle = register_dissector("ais_nmea", dissect_ais, proto_ais);
+
 }
 
 void
