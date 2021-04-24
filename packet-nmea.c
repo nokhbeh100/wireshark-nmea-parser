@@ -1,3 +1,8 @@
+/*
+ * Based on https://gpsd.gitlab.io/gpsd/index.html
+ *
+ */
+
 #include "config.h"
 
 #include <epan/packet.h>
@@ -24,17 +29,11 @@ guint8 processed_payload[128];
 
 static dissector_handle_t nmea_handle;
 
-//static int add_binary(tvbuff_t *tvb, proto_tree *tree, int hf_field, int start, int length)
-//{
-//    guint val = tvb_get_bits(tvb, start, length, ENC_BIG_ENDIAN);
-//    proto_tree_add_uint(tree, hf_field, tvb, start/8, length/8, val);
-//    proto_tree_add_bits_item(tree, hf_field, tvb, start, length, ENC_BIG_ENDIAN);
-//    proto_tree_add_item(tree, hf_field, tvb, 0, 1, ENC_NA);
-//    proto_tree_add_item(tree, hf_nmea_msgtype, payload, 0, 1, ENC_NA);
-//}
-
 static int process_payload(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
+    if (tvb_captured_length(tvb) == 0)
+        return 0;
+
     guint c = 0;
     for (guint t = 0; 4*t < tvb_captured_length(tvb); t+=1)
     {
@@ -73,6 +72,15 @@ static int process_payload(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, 
         start += 30; // MMSI
         start += 4; // navigation status
         start += 8; // Rate of Turn
+        start += 10; // speed over ground
+        start += 1; // position accuracy
+        start += 28; // long
+        start += 27; // lat
+        start += 12; // course over ground
+        start += 9; // heading
+        start += 6; // timestamp
+
+
 
         break;
     }
@@ -85,7 +93,7 @@ dissect_nmea(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
 {
 
   col_set_str(pinfo->cinfo, COL_PROTOCOL, "NMEA");
-  col_set_str(pinfo->cinfo, COL_INFO, "nmea packet data");
+  col_set_str(pinfo->cinfo, COL_INFO, "NMEA packet data");
 
   proto_tree *nmea_tree;
   proto_item *nmea_item;
