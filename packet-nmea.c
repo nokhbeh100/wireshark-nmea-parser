@@ -97,7 +97,7 @@ dissect_ais(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
     start += 6;
 
     switch (msgtype) {
-        case 1: case 2: case 3:
+    case 1: case 2: case 3:
         start += 2; // repeat indicator
         proto_tree_add_bits_item(ais_tree, hf_nmea_mmsi, tvb, start, 30, ENC_BIG_ENDIAN);
         start += 30; // MMSI
@@ -117,7 +117,31 @@ dissect_ais(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
         proto_tree_add_bits_item(ais_tree, hf_nmea_hdg, tvb, start, 9, ENC_BIG_ENDIAN);
         start += 9; // heading
         start += 6; // timestamp
-
+        start += 2; // Maneuver Indicator
+        start += 3; // Spare
+        start += 1; // raim
+        start += 19; // radio status
+        break;
+    case 4:
+        start += 2; // repeat indicator
+        proto_tree_add_bits_item(ais_tree, hf_nmea_mmsi, tvb, start, 30, ENC_BIG_ENDIAN);
+        start += 30; // MMSI
+        proto_tree_add_bits_item(ais_tree, hf_nmea_navstat, tvb, start, 4, ENC_BIG_ENDIAN);
+        start += 14; // year
+        start += 4; // month
+        start += 5; // day
+        start += 5; // hour
+        start += 6; // minute
+        start += 6; // second
+        start += 1; // quality
+        proto_tree_add_bits_item(ais_tree, hf_nmea_lon, tvb, start, 28, ENC_BIG_ENDIAN);
+        start += 28; // long
+        proto_tree_add_bits_item(ais_tree, hf_nmea_lat, tvb, start, 27, ENC_BIG_ENDIAN);
+        start += 27; // lat
+        start += 4; // EPFS
+        start += 10; // spare
+        start += 1; // raim
+        start += 19;
         break;
     }
 
@@ -234,13 +258,13 @@ proto_register_nmea(void)
       {
           { &hf_nmea_msgtype, { "Message Type", "nmea.msgtype", FT_UINT8, BASE_DEC, NULL, 0x0, "Message Type", HFILL} },
           { &hf_nmea_mmsi,    { "MMSI", "nmea.mmsi", FT_UINT32, BASE_DEC, NULL, 0x0, "MMSI", HFILL} },
-          { &hf_nmea_navstat,    { "Navigation Status", "nmea.navstat", FT_UINT32, BASE_CUSTOM, VALS(vals_nav_stat), 0x0, "MMSI", HFILL} },
-          { &hf_nmea_rot,    { "Rate of Turn", "nmea.rot", FT_INT32, BASE_CUSTOM, CF_FUNC(I3), 0x0, "Rate of Turn", HFILL} },
-          { &hf_nmea_sog,    { "Speed Over Ground", "nmea.sog", FT_UINT32, BASE_CUSTOM, CF_FUNC(U1), 0x0, "Speed Over Ground", HFILL} },
-          { &hf_nmea_lon,    { "Longitude", "nmea.lon", FT_INT32, BASE_CUSTOM, CF_FUNC(I4deg), 0x0, "Longitude", HFILL} },
-          { &hf_nmea_lat,    { "Lattitude", "nmea.lat", FT_INT32, BASE_CUSTOM, CF_FUNC(I4deg), 0x0, "Latitude", HFILL} },
-          { &hf_nmea_cog,    { "Course Over Ground", "nmea.cog", FT_UINT32, BASE_CUSTOM, CF_FUNC(U1), 0x0, "Course Over Ground", HFILL} },
-          { &hf_nmea_hdg,    { "True Heading (HDG)", "nmea.hdg", FT_UINT32, BASE_DEC, NULL, 0x0, "True Heading", HFILL} },
+          { &hf_nmea_navstat, { "Navigation Status", "nmea.navstat", FT_UINT32, BASE_DEC, VALS(vals_nav_stat), 0x0, "MMSI", HFILL} },
+          { &hf_nmea_rot,     { "Rate of Turn", "nmea.rot", FT_INT32, BASE_CUSTOM, CF_FUNC(I3), 0x0, "Rate of Turn", HFILL} },
+          { &hf_nmea_sog,     { "Speed Over Ground", "nmea.sog", FT_UINT32, BASE_CUSTOM, CF_FUNC(U1), 0x0, "Speed Over Ground", HFILL} },
+          { &hf_nmea_lon,     { "Longitude", "nmea.lon", FT_INT32, BASE_CUSTOM, CF_FUNC(I4deg), 0x0, "Longitude", HFILL} },
+          { &hf_nmea_lat,     { "Lattitude", "nmea.lat", FT_INT32, BASE_CUSTOM, CF_FUNC(I4deg), 0x0, "Latitude", HFILL} },
+          { &hf_nmea_cog,     { "Course Over Ground", "nmea.cog", FT_UINT32, BASE_CUSTOM, CF_FUNC(U1), 0x0, "Course Over Ground", HFILL} },
+          { &hf_nmea_hdg,     { "True Heading (HDG)", "nmea.hdg", FT_UINT32, BASE_DEC, NULL, 0x0, "True Heading", HFILL} },
 
     };
   proto_ais = proto_register_protocol("AIS packet data", "ais", "ais");
