@@ -285,9 +285,47 @@ dissect_ais(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
         start += 120; // shipname
         start += 1; // dte
         start += 1; // spare
-
-
         break;
+    case 18:
+        start += 2; // repeat indicator
+        proto_tree_add_bits_item(ais_tree, hf_nmea_mmsi, tvb, start, 30, ENC_BIG_ENDIAN);
+        start += 30; // MMSI
+        start += 8; // regional reserve
+        proto_tree_add_bits_item(ais_tree, hf_nmea_sog, tvb, start, 10, ENC_BIG_ENDIAN);
+        start += 10; // speed over ground
+        start += 1; // position accuracy
+        proto_tree_add_bits_item(ais_tree, hf_nmea_lon, tvb, start, 28, ENC_BIG_ENDIAN);
+        start += 28; // long
+        proto_tree_add_bits_item(ais_tree, hf_nmea_lat, tvb, start, 27, ENC_BIG_ENDIAN);
+        start += 27; // lat
+        proto_tree_add_bits_item(ais_tree, hf_nmea_cog, tvb, start, 12, ENC_BIG_ENDIAN);
+        start += 12; // course over ground
+        proto_tree_add_bits_item(ais_tree, hf_nmea_hdg, tvb, start, 9, ENC_BIG_ENDIAN);
+        start += 9; // heading
+        start += 6; // timestamp
+        start += 2; // regional reserve
+        break;
+     case 24:
+        start += 2; // repeat indicator
+        proto_tree_add_bits_item(ais_tree, hf_nmea_mmsi, tvb, start, 30, ENC_BIG_ENDIAN);
+        start += 30; // MMSI
+        start += 2; // part no
+        proto_tree_add_sixbit_string(ais_tree, hf_nmea_name, tvb, start, 120, ENC_BIG_ENDIAN);
+        start += 120; // shipname
+        start += 8; // spare
+        start += 18; // vendor id
+        start += 4; // unit mode code
+        start += 20; // serial number
+        proto_tree_add_sixbit_string(ais_tree, hf_nmea_callsign, tvb, start, 42, ENC_BIG_ENDIAN);
+        start += 42; // call sign
+        start += 9; // dimention to bow
+        start += 9; // dimention to stern
+        start += 6; // dimention to port
+        start += 6; // dimention to starboard
+        proto_tree_add_bits_item(ais_tree, hf_nmea_mmsi, tvb, start, 30, ENC_BIG_ENDIAN);
+        start += 30; // MMSI
+        break;
+
     }
 
     return tvb_captured_length(tvb);
