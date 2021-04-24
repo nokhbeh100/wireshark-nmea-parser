@@ -36,6 +36,7 @@ static int hf_nmea_hdg = -1;
 static int hf_nmea_imo = -1;
 static int hf_nmea_callsign = -1;
 static int hf_nmea_name = -1;
+static int hf_nmea_shptyp = -1;
 static int hf_nmea_dest = -1;
 
 
@@ -72,6 +73,91 @@ static const value_string vals_nav_stat[] = {
     { 13, "Reserved for future use" },
     { 14, "AIS-SART is active" },
     { 15, "Not defined (default)" },
+    { 0, NULL },
+};
+
+static const value_string vals_ship_type[] = {
+    //{1-19, "Reserved for future use"},
+    {20, "Wing in ground (WIG), all ships of this type"},
+    {21, "Wing in ground (WIG), Hazardous category A"},
+    {22, "Wing in ground (WIG), Hazardous category B"},
+    {23, "Wing in ground (WIG), Hazardous category C"},
+    {24, "Wing in ground (WIG), Hazardous category D"},
+    {25, "Wing in ground (WIG), Reserved for future use"},
+    {26, "Wing in ground (WIG), Reserved for future use"},
+    {27, "Wing in ground (WIG), Reserved for future use"},
+    {28, "Wing in ground (WIG), Reserved for future use"},
+    {29, "Wing in ground (WIG), Reserved for future use"},
+    {30, "Fishing"},
+    {31, "Towing"},
+    {32, "Towing: length exceeds 200m or breadth exceeds 25m"},
+    {33, "Dredging or underwater ops"},
+    {34, "Diving ops"},
+    {35, "Military ops"},
+    {36, "Sailing"},
+    {37, "Pleasure Craft"},
+    {38, "Reserved"},
+    {39, "Reserved"},
+    {40, "High speed craft (HSC), all ships of this type"},
+    {41, "High speed craft (HSC), Hazardous category A"},
+    {42, "High speed craft (HSC), Hazardous category B"},
+    {43, "High speed craft (HSC), Hazardous category C"},
+    {44, "High speed craft (HSC), Hazardous category D"},
+    {45, "High speed craft (HSC), Reserved for future use"},
+    {46, "High speed craft (HSC), Reserved for future use"},
+    {47, "High speed craft (HSC), Reserved for future use"},
+    {48, "High speed craft (HSC), Reserved for future use"},
+    {49, "High speed craft (HSC), No additional information"},
+    {50, "Pilot Vessel"},
+    {51, "Search and Rescue vessel"},
+    {52, "Tug"},
+    {53, "Port Tender"},
+    {54, "Anti-pollution equipment"},
+    {55, "Law Enforcement"},
+    {56, "Spare - Local Vessel"},
+    {57, "Spare - Local Vessel"},
+    {58, "Medical Transport"},
+    {59, "Noncombatant ship according to RR Resolution No. 18"},
+    {60, "Passenger, all ships of this type"},
+    {61, "Passenger, Hazardous category A"},
+    {62, "Passenger, Hazardous category B"},
+    {63, "Passenger, Hazardous category C"},
+    {64, "Passenger, Hazardous category D"},
+    {65, "Passenger, Reserved for future use"},
+    {66, "Passenger, Reserved for future use"},
+    {67, "Passenger, Reserved for future use"},
+    {68, "Passenger, Reserved for future use"},
+    {69, "Passenger, No additional information"},
+    {70, "Cargo, all ships of this type"},
+    {71, "Cargo, Hazardous category A"},
+    {72, "Cargo, Hazardous category B"},
+    {73, "Cargo, Hazardous category C"},
+    {74, "Cargo, Hazardous category D"},
+    {75, "Cargo, Reserved for future use"},
+    {76, "Cargo, Reserved for future use"},
+    {77, "Cargo, Reserved for future use"},
+    {78, "Cargo, Reserved for future use"},
+    {79, "Cargo, No additional information"},
+    {80, "Tanker, all ships of this type"},
+    {81, "Tanker, Hazardous category A"},
+    {82, "Tanker, Hazardous category B"},
+    {83, "Tanker, Hazardous category C"},
+    {84, "Tanker, Hazardous category D"},
+    {85, "Tanker, Reserved for future use"},
+    {86, "Tanker, Reserved for future use"},
+    {87, "Tanker, Reserved for future use"},
+    {88, "Tanker, Reserved for future use"},
+    {89, "Tanker, No additional information"},
+    {90, "Other Type, all ships of this type"},
+    {91, "Other Type, Hazardous category A"},
+    {92, "Other Type, Hazardous category B"},
+    {93, "Other Type, Hazardous category C"},
+    {94, "Other Type, Hazardous category D"},
+    {95, "Other Type, Reserved for future use"},
+    {96, "Other Type, Reserved for future use"},
+    {97, "Other Type, Reserved for future use"},
+    {98, "Other Type, Reserved for future use"},
+    {99, "Other Type, no additional information"},
     { 0, NULL },
 };
 
@@ -183,6 +269,7 @@ dissect_ais(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
         start += 42; // call sign
         proto_tree_add_sixbit_string(ais_tree, hf_nmea_name, tvb, start, 120, ENC_BIG_ENDIAN);
         start += 120; // shipname
+        proto_tree_add_bits_item(ais_tree, hf_nmea_shptyp, tvb, start, 8, ENC_BIG_ENDIAN);
         start += 8; // ship type
         start += 9; // dimention to bow
         start += 9; // dimention to stern
@@ -327,6 +414,7 @@ proto_register_nmea(void)
           { &hf_nmea_imo,    { "IMO", "nmea.imo", FT_UINT32, BASE_DEC, NULL, 0x0, "IMO", HFILL} },
           { &hf_nmea_callsign, { "Call Sign", "nmea.callsign", FT_STRINGZ, STR_ASCII, NULL, 0x0, "Call Sign", HFILL} },
           { &hf_nmea_name, { "Ship Name", "nmea.shipname", FT_STRINGZ, STR_ASCII, NULL, 0x0, "Ship Name", HFILL} },
+          { &hf_nmea_shptyp, { "Ship Type", "nmea.shptyp", FT_UINT32, BASE_DEC, VALS(vals_ship_type), 0x0, "Ship Type", HFILL} },
           { &hf_nmea_dest, { "Destination", "nmea.dest", FT_STRINGZ, STR_ASCII, NULL, 0x0, "Destination", HFILL} },
     };
   proto_ais = proto_register_protocol("AIS packet data", "ais", "ais");
