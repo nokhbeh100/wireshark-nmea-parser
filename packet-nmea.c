@@ -502,7 +502,7 @@ static const value_string vals_epfd[] = {
 
 static void
 I3(gchar *buf, gint32 value) {
-        g_snprintf(buf, ITEM_LABEL_LENGTH, "%d.%03u", value / 1000, abs(value) % 1000);
+        g_snprintf(buf, ITEM_LABEL_LENGTH, "%.03f", value / 1000.);
 }
 
 static void
@@ -512,7 +512,7 @@ I4deg(gchar *buf, gint32 value) {
 
 static void
 U1(gchar *buf, guint32 value) {
-        g_snprintf(buf, ITEM_LABEL_LENGTH, "%u.%01u", value / 10, value % 10);
+        g_snprintf(buf, ITEM_LABEL_LENGTH, "%.01f", value / 10.);
 }
 
 proto_item *
