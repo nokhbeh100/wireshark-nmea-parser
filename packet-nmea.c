@@ -59,6 +59,11 @@ static int hf_ais_shptyp = -1;
 static int hf_ais_dest = -1;
 
 
+static int hf_ais_dim_bow = -1;
+static int hf_ais_dim_stern = -1;
+static int hf_ais_dim_port = -1;
+static int hf_ais_dim_starboard = -1;
+
 
 
 guint8 processed_payload[128];
@@ -645,9 +650,13 @@ dissect_ais(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
         start += 120; // shipname
         proto_tree_add_bits_item(ais_tree, hf_ais_shptyp, tvb, start, 8, ENC_BIG_ENDIAN);
         start += 8; // ship type
+        proto_tree_add_bits_item(ais_tree, hf_ais_dim_bow, tvb, start, 9, ENC_BIG_ENDIAN);
         start += 9; // dimention to bow
+        proto_tree_add_bits_item(ais_tree, hf_ais_dim_stern, tvb, start, 9, ENC_BIG_ENDIAN);
         start += 9; // dimention to stern
+        proto_tree_add_bits_item(ais_tree, hf_ais_dim_port, tvb, start, 6, ENC_BIG_ENDIAN);
         start += 6; // dimention to port
+        proto_tree_add_bits_item(ais_tree, hf_ais_dim_starboard, tvb, start, 6, ENC_BIG_ENDIAN);
         start += 6; // dimention to starboard
         proto_tree_add_bits_item(ais_tree, hf_ais_epfd, tvb, start, 4, ENC_BIG_ENDIAN);
         start += 4; // EPFD
@@ -692,9 +701,13 @@ dissect_ais(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
         start += 20; // serial number
         proto_tree_add_sixbit_string(ais_tree, hf_ais_callsign, tvb, start, 42, ENC_BIG_ENDIAN);
         start += 42; // call sign
+        proto_tree_add_bits_item(ais_tree, hf_ais_dim_bow, tvb, start, 9, ENC_BIG_ENDIAN);
         start += 9; // dimention to bow
+        proto_tree_add_bits_item(ais_tree, hf_ais_dim_stern, tvb, start, 9, ENC_BIG_ENDIAN);
         start += 9; // dimention to stern
+        proto_tree_add_bits_item(ais_tree, hf_ais_dim_port, tvb, start, 6, ENC_BIG_ENDIAN);
         start += 6; // dimention to port
+        proto_tree_add_bits_item(ais_tree, hf_ais_dim_starboard, tvb, start, 6, ENC_BIG_ENDIAN);
         start += 6; // dimention to starboard
         proto_tree_add_bits_item(ais_tree, hf_ais_mmsi, tvb, start, 30, ENC_BIG_ENDIAN);
         start += 30; // mother MMSI
@@ -872,7 +885,14 @@ proto_register_nmea(void)
           { &hf_ais_name, { "Ship Name", "ais.shipname", FT_STRINGZ, STR_ASCII, NULL, 0x0, "Ship Name", HFILL} },
           { &hf_ais_shptyp, { "Ship Type", "ais.shptyp", FT_UINT32, BASE_DEC, VALS(vals_ship_type), 0x0, "Ship Type", HFILL} },
           { &hf_ais_dest, { "Destination", "ais.dest", FT_STRINGZ, STR_ASCII, NULL, 0x0, "Destination", HFILL} },
-    };
+
+          { &hf_ais_dim_bow, { "Dimention to Bow", "ais.dimbow", FT_UINT32, BASE_DEC, NULL, 0x0, "Dimention to Bow", HFILL} },
+          { &hf_ais_dim_stern, { "Dimention to Stern", "ais.dimstern", FT_UINT32, BASE_DEC, NULL, 0x0, "Dimention to Stern", HFILL} },
+          { &hf_ais_dim_port, { "Dimention to Port", "ais.dimport", FT_UINT32, BASE_DEC, NULL, 0x0, "Dimention to Port", HFILL} },
+          { &hf_ais_dim_starboard, { "Dimention to Starboard", "ais.dimstarboard", FT_UINT32, BASE_DEC, NULL, 0x0, "Dimention to Starboard", HFILL} },
+
+
+  };
   proto_ais = proto_register_protocol("AIS packet data", "ais", "ais");
   proto_register_subtree_array(ettais, array_length(ettais));
   proto_register_field_array(proto_ais, hf_ais, array_length(hf_ais));
