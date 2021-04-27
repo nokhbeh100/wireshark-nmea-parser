@@ -39,6 +39,7 @@ static int hf_ais_lon = -1;
 static int hf_ais_lat = -1;
 static int hf_ais_cog = -1;
 static int hf_ais_hdg = -1;
+static int hf_ais_raim = -1;
 
 static int hf_ais_year = -1;
 static int hf_ais_month = -1;
@@ -69,7 +70,20 @@ static int hf_ais_dim_starboard = -1;
 static int hf_ais_sync_state = -1;
 static int hf_ais_slot_timeout = -1;
 static int hf_ais_submessage = -1;
+static int hf_ais_slot_offset = -1;
+static int hf_ais_recieved_stations = -1;
+static int hf_ais_slot_used = -1;
+static int hf_ais_slot_increment = -1;
+static int hf_ais_slot_reserved = -1;
 
+static int hf_ais_lon1 = -1;
+static int hf_ais_lat1 = -1;
+static int hf_ais_sog0 = -1;
+static int hf_ais_cog0 = -1;
+
+static int hf_ais_int_msgtype = -1;
+static int hf_ais_int_mmsi = -1;
+static int hf_ais_int_mid = -1;
 
 
 guint8 processed_payload[128];
@@ -86,6 +100,37 @@ static char str[1024];
 
 static dissector_handle_t nmea_handle;
 static dissector_handle_t ais_handle;
+
+static const value_string vals_msgtype[] = {
+    {1, "Position Report Class A"},
+    {2, "Position Report Class A (Assigned schedule)"},
+    {3, "Position Report Class A (Response to interrogation)"},
+    {4, "Base Station Report"},
+    {5, "Static and Voyage Related Data"},
+    {6, "Binary Addressed Message"},
+    {7, "Binary Acknowledge"},
+    {8, "Binary Broadcast Message"},
+    {9, "Standard SAR Aircraft Position Report"},
+    {10, "UTC and Date Inquiry"},
+    {11, "UTC and Date Response"},
+    {12, "Addressed Safety Related Message"},
+    {13, "Safety Related Acknowledgement"},
+    {14, "Safety Related Broadcast Message"},
+    {15, "Interrogation"},
+    {16, "Assignment Mode Command"},
+    {17, "DGNSS Binary Broadcast Message"},
+    {18, "Standard Class B CS Position Report"},
+    {19, "Extended Class B Equipment Position Report"},
+    {20, "Data Link Management"},
+    {21, "Aid-to-Navigation Report"},
+    {22, "Channel Management"},
+    {23, "Group Assignment Command"},
+    {24, "Static Data Report"},
+    {25, "Single Slot Binary Message,"},
+    {26, "Multiple Slot Binary Message With Communications State"},
+    {27, "Position Report For Long-Range Applications"},
+    {0, NULL},
+};
 
 // codes come from https://www.itu.int/en/ITU-R/terrestrial/fmd/Pages/mid.aspx
 static const value_string vals_mid[] = {
@@ -524,6 +569,11 @@ I4deg(gchar *buf, gint32 value) {
 }
 
 static void
+I1deg(gchar *buf, gint32 value) {
+        g_snprintf(buf, ITEM_LABEL_LENGTH, "%.03f", value / 600.);
+}
+
+static void
 U1(gchar *buf, guint32 value) {
         g_snprintf(buf, ITEM_LABEL_LENGTH, "%.01f", value / 10.);
 }
@@ -589,12 +639,12 @@ static int parse_SOTDMA(tvbuff_t *tvb, proto_tree *ais_tree, int start)
     start += 3; // timeslot
     if (timeslot == 3 || timeslot == 5 || timeslot == 7)
     {
-        proto_tree_add_bits_item(ais_tree, hf_ais_submessage, tvb, start, 14, ENC_BIG_ENDIAN);
+        proto_tree_add_bits_item(ais_tree, hf_ais_recieved_stations, tvb, start, 14, ENC_BIG_ENDIAN);
         start += 14; // recieved stations
     }
     if (timeslot == 2 || timeslot == 4 || timeslot == 6)
     {
-        proto_tree_add_bits_item(ais_tree, hf_ais_submessage, tvb, start, 14, ENC_BIG_ENDIAN);
+        proto_tree_add_bits_item(ais_tree, hf_ais_slot_used, tvb, start, 14, ENC_BIG_ENDIAN);
         start += 14; // slot numbers used for this transmission
     }
     if (timeslot == 1)
@@ -607,7 +657,7 @@ static int parse_SOTDMA(tvbuff_t *tvb, proto_tree *ais_tree, int start)
     }
     if (timeslot == 0)
     {
-        proto_tree_add_bits_item(ais_tree, hf_ais_submessage, tvb, start, 14, ENC_BIG_ENDIAN);
+        proto_tree_add_bits_item(ais_tree, hf_ais_slot_offset, tvb, start, 14, ENC_BIG_ENDIAN);
         start += 14; // slot offset
     }
     return start;
@@ -618,7 +668,9 @@ static int parse_ITDMA(tvbuff_t *tvb, proto_tree *ais_tree, int start)
 
     proto_tree_add_bits_item(ais_tree, hf_ais_sync_state, tvb, start, 2, ENC_BIG_ENDIAN);
     start += 2; // sync state
+    proto_tree_add_bits_item(ais_tree, hf_ais_slot_increment, tvb, start, 13, ENC_BIG_ENDIAN);
     start += 13; // slot increment
+    proto_tree_add_bits_item(ais_tree, hf_ais_slot_reserved, tvb, start, 3, ENC_BIG_ENDIAN);
     start += 3; // number of slots to allocate
     start += 1; // keep flag
     return start;
@@ -647,8 +699,7 @@ dissect_ais(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
     start += 2; // repeat indicator
     proto_tree_add_bits_item(ais_tree, hf_ais_mmsi, tvb, start, 30, ENC_BIG_ENDIAN);
     guint mmsi = tvb_get_bits(tvb, start, 30, ENC_BIG_ENDIAN);
-    guint mid = getmid(mmsi);
-    proto_tree_add_uint(ais_tree, hf_ais_mid, tvb, start/8, 4, mid);
+    proto_tree_add_uint(ais_tree, hf_ais_mid, tvb, start/8, 4, getmid(mmsi));
     start += 30; // MMSI
 
     switch (msgtype) {
@@ -672,6 +723,7 @@ dissect_ais(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
         start += 6; // timestamp
         start += 2; // Maneuver Indicator
         start += 3; // Spare
+        proto_tree_add_bits_item(ais_tree, hf_ais_raim, tvb, start, 1, ENC_BIG_ENDIAN);
         start += 1; // raim
         if (msgtype == 1 || msgtype == 2) // SOTDMA
         {
@@ -703,6 +755,7 @@ dissect_ais(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
         proto_tree_add_bits_item(ais_tree, hf_ais_epfd, tvb, start, 4, ENC_BIG_ENDIAN);
         start += 4; // EPFD
         start += 10; // spare
+        proto_tree_add_bits_item(ais_tree, hf_ais_raim, tvb, start, 1, ENC_BIG_ENDIAN);
         start += 1; // raim
         start = parse_SOTDMA(tvb, ais_tree, start);
         break;
@@ -740,6 +793,33 @@ dissect_ais(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
         start += 1; // dte
         start += 1; // spare
         break;
+    case 15:
+        start += 2; // spare
+        proto_tree_add_bits_item(ais_tree, hf_ais_int_mmsi, tvb, start, 30, ENC_BIG_ENDIAN);
+        mmsi = tvb_get_bits(tvb, start, 30, ENC_BIG_ENDIAN);
+        proto_tree_add_uint(ais_tree, hf_ais_int_mid, tvb, start/8, 4, getmid(mmsi));
+        start += 30; // MMSI
+        proto_tree_add_bits_item(ais_tree, hf_ais_int_msgtype, tvb, start, 6, ENC_BIG_ENDIAN);
+        start += 6;
+        proto_tree_add_bits_item(ais_tree, hf_ais_slot_offset, tvb, start, 12, ENC_BIG_ENDIAN);
+        start += 12; // slot offset
+        start += 2; // spare
+        proto_tree_add_bits_item(ais_tree, hf_ais_int_msgtype, tvb, start, 6, ENC_BIG_ENDIAN);
+        start += 6;
+        proto_tree_add_bits_item(ais_tree, hf_ais_slot_offset, tvb, start, 12, ENC_BIG_ENDIAN);
+        start += 12; // slot offset
+        start += 2; // spare
+        proto_tree_add_bits_item(ais_tree, hf_ais_int_mmsi, tvb, start, 30, ENC_BIG_ENDIAN);
+        mmsi = tvb_get_bits(tvb, start, 30, ENC_BIG_ENDIAN);
+        proto_tree_add_uint(ais_tree, hf_ais_int_mid, tvb, start/8, 4, getmid(mmsi));
+        start += 30; // MMSI
+        proto_tree_add_bits_item(ais_tree, hf_ais_int_msgtype, tvb, start, 6, ENC_BIG_ENDIAN);
+        start += 6;
+        proto_tree_add_bits_item(ais_tree, hf_ais_slot_offset, tvb, start, 12, ENC_BIG_ENDIAN);
+        start += 12; // slot offset
+        start += 2; // spare
+
+        break;
     case 18:
         start += 8; // regional reserve
         proto_tree_add_bits_item(ais_tree, hf_ais_sog, tvb, start, 10, ENC_BIG_ENDIAN);
@@ -762,6 +842,7 @@ dissect_ais(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
         start += 1; // band flag
         start += 1; // msg22 flag
         start += 1; // assigned
+        proto_tree_add_bits_item(ais_tree, hf_ais_raim, tvb, start, 1, ENC_BIG_ENDIAN);
         start += 1; // raim flag
         itdma = tvb_get_bits(tvb, start, 1, ENC_BIG_ENDIAN);
         start += 1; // ITDMA flag
@@ -773,6 +854,41 @@ dissect_ais(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
         {
             start = parse_SOTDMA(tvb, ais_tree, start);
         }
+        break;
+     case 20:
+        start += 2; // spare
+        proto_tree_add_bits_item(ais_tree, hf_ais_slot_offset, tvb, start, 12, ENC_BIG_ENDIAN);
+        start += 12; // slot offset
+        proto_tree_add_bits_item(ais_tree, hf_ais_slot_reserved, tvb, start, 4, ENC_BIG_ENDIAN);
+        start += 4; // slots reserved
+        proto_tree_add_bits_item(ais_tree, hf_ais_slot_timeout, tvb, start, 3, ENC_BIG_ENDIAN);
+        start += 3; // slot timeout
+        proto_tree_add_bits_item(ais_tree, hf_ais_slot_increment, tvb, start, 11, ENC_BIG_ENDIAN);
+        start += 11; // slot increment
+        proto_tree_add_bits_item(ais_tree, hf_ais_slot_offset, tvb, start, 12, ENC_BIG_ENDIAN);
+        start += 12; // slot offset
+        proto_tree_add_bits_item(ais_tree, hf_ais_slot_reserved, tvb, start, 4, ENC_BIG_ENDIAN);
+        start += 4; // slots reserved
+        proto_tree_add_bits_item(ais_tree, hf_ais_slot_timeout, tvb, start, 3, ENC_BIG_ENDIAN);
+        start += 3; // slot timeout
+        proto_tree_add_bits_item(ais_tree, hf_ais_slot_increment, tvb, start, 11, ENC_BIG_ENDIAN);
+        start += 11; // slot increment
+        proto_tree_add_bits_item(ais_tree, hf_ais_slot_offset, tvb, start, 12, ENC_BIG_ENDIAN);
+        start += 12; // slot offset
+        proto_tree_add_bits_item(ais_tree, hf_ais_slot_reserved, tvb, start, 4, ENC_BIG_ENDIAN);
+        start += 4; // slots reserved
+        proto_tree_add_bits_item(ais_tree, hf_ais_slot_timeout, tvb, start, 3, ENC_BIG_ENDIAN);
+        start += 3; // slot timeout
+        proto_tree_add_bits_item(ais_tree, hf_ais_slot_increment, tvb, start, 11, ENC_BIG_ENDIAN);
+        start += 11; // slot increment
+        proto_tree_add_bits_item(ais_tree, hf_ais_slot_offset, tvb, start, 12, ENC_BIG_ENDIAN);
+        start += 12; // slot offset
+        proto_tree_add_bits_item(ais_tree, hf_ais_slot_reserved, tvb, start, 4, ENC_BIG_ENDIAN);
+        start += 4; // slots reserved
+        proto_tree_add_bits_item(ais_tree, hf_ais_slot_timeout, tvb, start, 3, ENC_BIG_ENDIAN);
+        start += 3; // slot timeout
+        proto_tree_add_bits_item(ais_tree, hf_ais_slot_increment, tvb, start, 11, ENC_BIG_ENDIAN);
+        start += 11; // slot increment
         break;
      case 24:
         start += 2; // part no
@@ -794,6 +910,24 @@ dissect_ais(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
         start += 6; // dimention to starboard
         proto_tree_add_bits_item(ais_tree, hf_ais_mmsi, tvb, start, 30, ENC_BIG_ENDIAN);
         start += 30; // mother MMSI
+        break;
+    case 27:
+        start += 1; // position accuracy
+        proto_tree_add_bits_item(ais_tree, hf_ais_raim, tvb, start, 1, ENC_BIG_ENDIAN);
+        start += 1; // raim
+        proto_tree_add_bits_item(ais_tree, hf_ais_navstat, tvb, start, 4, ENC_BIG_ENDIAN);
+        start += 4; // navigation status
+        proto_tree_add_bits_item(ais_tree, hf_ais_lon1, tvb, start, 18, ENC_BIG_ENDIAN);
+        start += 18; // long
+        proto_tree_add_bits_item(ais_tree, hf_ais_lat1, tvb, start, 17, ENC_BIG_ENDIAN);
+        start += 17; // lat
+        proto_tree_add_bits_item(ais_tree, hf_ais_sog0, tvb, start, 6, ENC_BIG_ENDIAN);
+        start += 6; // speed over ground
+        proto_tree_add_bits_item(ais_tree, hf_ais_cog0, tvb, start, 9, ENC_BIG_ENDIAN);
+        start += 9; // course over ground
+        start += 1; // GNSS
+        start += 1; // Spare
+
         break;
 
     }
@@ -917,7 +1051,7 @@ proto_register_nmea(void)
       {
           { &hf_ais_char, { "sixbit char", "ais.char", FT_UINT8, BASE_HEX, NULL, 0x0, "Char", HFILL} },
 
-          { &hf_ais_msgtype, { "Message Type", "ais.msgtype", FT_UINT8, BASE_DEC, NULL, 0x0, "Message Type", HFILL} },
+          { &hf_ais_msgtype, { "Message Type", "ais.msgtype", FT_UINT8, BASE_DEC, VALS(vals_msgtype), 0x0, "Message Type", HFILL} },
           { &hf_ais_mmsi,    { "MMSI", "ais.mmsi", FT_UINT32, BASE_DEC, NULL, 0x0, "MMSI", HFILL} },
           { &hf_ais_repeat,  { "Repeat Indicator", "ais.repeat", FT_UINT32, BASE_DEC, NULL, 0x0, "Repeat Indicator", HFILL} },
           { &hf_ais_mid,     { "MID", "ais.mid", FT_UINT32, BASE_DEC, VALS(vals_mid), 0x0, "MID", HFILL} },
@@ -928,10 +1062,16 @@ proto_register_nmea(void)
           { &hf_ais_lat,     { "Lattitude", "ais.lat", FT_INT32, BASE_CUSTOM, CF_FUNC(I4deg), 0x0, "Latitude", HFILL} },
           { &hf_ais_cog,     { "Course Over Ground", "ais.cog", FT_UINT32, BASE_CUSTOM, CF_FUNC(U1), 0x0, "Course Over Ground", HFILL} },
           { &hf_ais_hdg,     { "True Heading (HDG)", "ais.hdg", FT_UINT32, BASE_DEC, NULL, 0x0, "True Heading", HFILL} },
+          { &hf_ais_raim,    { "RAIM Flag", "ais.raim", FT_UINT32, BASE_DEC, NULL, 0x0, "RAIM Flag", HFILL} },
 
-          { &hf_ais_sync_state,       { "Syncronization State", "ais.sync", FT_UINT32, BASE_DEC, VALS(vals_sync_mode), 0x0, "Syncronization State", HFILL} },
-          { &hf_ais_slot_timeout,     { "Slot timeout", "ais.slottimeout", FT_UINT32, BASE_DEC, NULL, 0x0, "Slot timeout", HFILL} },
-          { &hf_ais_submessage,       { "Sub Message", "ais.submes", FT_UINT32, BASE_DEC, NULL, 0x0, "Sub Message", HFILL} },
+          { &hf_ais_sync_state,        { "Syncronization State", "ais.sync", FT_UINT32, BASE_DEC, VALS(vals_sync_mode), 0x0, "Syncronization State", HFILL} },
+          { &hf_ais_slot_timeout,      { "Slot timeout", "ais.slottimeout", FT_UINT32, BASE_DEC, NULL, 0x0, "Slot timeout", HFILL} },
+          { &hf_ais_submessage,        { "Sub Message", "ais.submes", FT_UINT32, BASE_DEC, NULL, 0x0, "Sub Message", HFILL} },
+          { &hf_ais_slot_offset,       { "Slot Offset", "ais.slotoffset", FT_UINT32, BASE_DEC, NULL, 0x0, "Slot Offset", HFILL} },
+          { &hf_ais_recieved_stations, { "Recieved Stations", "ais.recstations", FT_UINT32, BASE_DEC, NULL, 0x0, "Recieved Stations", HFILL} },
+          { &hf_ais_slot_used,         { "Slot Used", "ais.slotused", FT_UINT32, BASE_DEC, NULL, 0x0, "Slot Used", HFILL} },
+          { &hf_ais_slot_increment,    { "Slot Increment", "ais.slotinc", FT_UINT32, BASE_DEC, NULL, 0x0, "Slot Increment", HFILL} },
+          { &hf_ais_slot_reserved,     { "Slots Reserved", "ais.slotres", FT_UINT32, BASE_DEC, NULL, 0x0, "Slots Reserved", HFILL} },
 
 
           { &hf_ais_year,    { "Year", "ais.year", FT_UINT32, BASE_DEC, NULL, 0x0, "Year", HFILL} },
@@ -957,6 +1097,15 @@ proto_register_nmea(void)
           { &hf_ais_dim_stern,     { "Dimention to Stern", "ais.dimstern", FT_UINT32, BASE_DEC, NULL, 0x0, "Dimention to Stern", HFILL} },
           { &hf_ais_dim_port,      { "Dimention to Port", "ais.dimport", FT_UINT32, BASE_DEC, NULL, 0x0, "Dimention to Port", HFILL} },
           { &hf_ais_dim_starboard, { "Dimention to Starboard", "ais.dimstarboard", FT_UINT32, BASE_DEC, NULL, 0x0, "Dimention to Starboard", HFILL} },
+
+          { &hf_ais_lon1,     { "Longitude", "ais.lon", FT_INT32, BASE_CUSTOM, CF_FUNC(I1deg), 0x0, "Longitude", HFILL} },
+          { &hf_ais_lat1,     { "Lattitude", "ais.lat", FT_INT32, BASE_CUSTOM, CF_FUNC(I1deg), 0x0, "Latitude", HFILL} },
+          { &hf_ais_sog0,     { "Speed Over Ground", "ais.sog", FT_UINT32, BASE_CUSTOM, NULL, 0x0, "Speed Over Ground", HFILL} },
+          { &hf_ais_cog0,     { "Course Over Ground", "ais.cog", FT_UINT32, BASE_CUSTOM, NULL, 0x0, "Course Over Ground", HFILL} },
+
+          { &hf_ais_int_msgtype, { "Interrogation Message Type", "ais.intmsgtype", FT_UINT8, BASE_DEC, VALS(vals_msgtype), 0x0, "Interrogation Message Type", HFILL} },
+          { &hf_ais_int_mmsi,    { "Interrogation MMSI", "ais.intmmsi", FT_UINT32, BASE_DEC, NULL, 0x0, "Interrogation MMSI", HFILL} },
+          { &hf_ais_int_mid,     { "Interrogation MID", "ais.intmid", FT_UINT32, BASE_DEC, VALS(vals_mid), 0x0, "Interrogation MID", HFILL} },
 
 
   };
