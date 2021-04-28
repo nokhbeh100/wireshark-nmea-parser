@@ -100,6 +100,7 @@ static int hf_ais_channel_b = -1;
 
 static int hf_ais_dac = -1;
 static int hf_ais_fid = -1;
+static int hf_ais_ai = -1;
 
 
 static int hf_msg_fragments = -1;
@@ -727,6 +728,47 @@ static const value_string vals_aid_type[] = {
     {0, NULL},
 };
 
+// only international messages added
+static const value_string vals_ai[] = {
+    {(1 << 6) | 0, "Text Telegram"},
+    {(1 << 6) | 1, "Application acknowledgement"},
+    {(1 << 6) | 2, "Interrogation on specific IFM"},
+    {(1 << 6) | 3, "Capability interrogation"},
+    {(1 << 6) | 4, "Capability interrogation reply"},
+    {(1 << 6) | 5, "Application acknowledgement to an addressed binary message"},
+    {(1 << 6) | 11, "Meteorological and Hydrological Data"},
+    {(1 << 6) | 12, "Dangerous cargo indication"},
+    {(1 << 6) | 13, "Fairway Closed"},
+    {(1 << 6) | 14, "Tidal window"},
+    {(1 << 6) | 15, "Extended Ship Static and Voyage Related Data"},
+    {(1 << 6) | 16, "Number of persons on board"},
+    {(1 << 6) | 17, "VTS-Generated/Synthetic targets"},
+    {(1 << 6) | 18, "Clearance time to enter port"},
+    {(1 << 6) | 19, "Marine Traffic Signal"},
+    {(1 << 6) | 20, "Berthing data (addressed)"},
+    {(1 << 6) | 21, "Weather observation report from ship"},
+    {(1 << 6) | 22, "Area Notice (broadcast)"},
+    {(1 << 6) | 23, "Area notice (addressed)"},
+    {(1 << 6) | 24, "Extended Ship Static and Voyage Related Data"},
+    {(1 << 6) | 25, "Dangerous Cargo indication"},
+    {(1 << 6) | 26, "Environmental"},
+    {(1 << 6) | 27, "Route Information (broadcast)"},
+    {(1 << 6) | 28, "Route info addressed"},
+    {(1 << 6) | 29, "Text description (broadcast)"},
+    {(1 << 6) | 30, "Text description addressed"},
+    {(1 << 6) | 31, "Meteorological and Hydrological Data"},
+    {(1 << 6) | 32, "Tidal Window"},
+    {(1 << 6) | 40, "Number of Persons on board"},
+    {(200 << 6) | 10, "Inland ship static and voyage related data"},
+    {(200 << 6) | 21, "ETA at lock/bridge/terminal"},
+    {(200 << 6) | 22, "RTA at lock/bridge/terminal"},
+    {(200 << 6) | 23, "EMMA Warning Report"},
+    {(200 << 6) | 24, "Water Levels"},
+    {(200 << 6) | 40, "Signal Strength"},
+    {(200 << 6) | 55, "Number of persons on board"},
+    {0, NULL},
+};
+
 static void
 I3(gchar *buf, gint32 value) {
         g_snprintf(buf, ITEM_LABEL_LENGTH, "%.03f", value / 1000.);
@@ -970,6 +1012,7 @@ dissect_ais(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
         start += 30; // MMSI
         start += 1; // retransmit flag
         start += 1; // spare
+        proto_tree_add_bits_item(ais_tree, hf_ais_ai, tvb, start, 16, ENC_BIG_ENDIAN);
         proto_tree_add_bits_item(ais_tree, hf_ais_dac, tvb, start, 10, ENC_BIG_ENDIAN);
         start += 10; // DAC
         proto_tree_add_bits_item(ais_tree, hf_ais_fid, tvb, start, 6, ENC_BIG_ENDIAN);
@@ -978,6 +1021,7 @@ dissect_ais(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
         break;
     case 8:
         start += 2; // spare
+        proto_tree_add_bits_item(ais_tree, hf_ais_ai, tvb, start, 16, ENC_BIG_ENDIAN);
         proto_tree_add_bits_item(ais_tree, hf_ais_dac, tvb, start, 10, ENC_BIG_ENDIAN);
         start += 10; // DAC
         proto_tree_add_bits_item(ais_tree, hf_ais_fid, tvb, start, 6, ENC_BIG_ENDIAN);
@@ -1525,6 +1569,7 @@ proto_register_nmea(void)
 
           { &hf_ais_dac,     { "DAC", "ais.dac", FT_UINT32, BASE_DEC, VALS(vals_mid), 0x0, "DAC", HFILL} },
           { &hf_ais_fid,     { "FID", "ais.fid", FT_UINT32, BASE_DEC, NULL, 0x0, "FID", HFILL} },
+          { &hf_ais_ai,      { "AI", "ais.ai", FT_UINT16, BASE_HEX, VALS(vals_ai), 0x0, "AI", HFILL} },
   };
   proto_ais = proto_register_protocol("AIS packet data", "AIS", "ais");
   proto_register_subtree_array(ettais, array_length(ettais));
@@ -1537,7 +1582,7 @@ proto_register_nmea(void)
 void
 proto_reg_handoff_nmea(void)
 {
-  dissector_add_uint_with_preference("udp.port", 5005, nmea_handle);
+    dissector_add_for_decode_as("udp.port", nmea_handle);
   dissector_add_for_decode_as("udp.port", ais_handle);
 }
 
