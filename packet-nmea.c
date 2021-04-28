@@ -10,6 +10,7 @@
 #include "config.h"
 
 #include <epan/packet.h>
+#include <epan/reassemble.h>
 
 void proto_register_nmea(void);
 void proto_reg_handoff_nmea(void);
@@ -100,6 +101,45 @@ static int hf_ais_channel_b = -1;
 static int hf_ais_dac = -1;
 static int hf_ais_fid = -1;
 
+
+static int hf_msg_fragments = -1;
+static int hf_msg_fragment = -1;
+static int hf_msg_fragment_overlap = -1;
+static int hf_msg_fragment_overlap_conflicts = -1;
+static int hf_msg_fragment_multiple_tails = -1;
+static int hf_msg_fragment_too_long_fragment = -1;
+static int hf_msg_fragment_error = -1;
+static int hf_msg_fragment_count = -1;
+static int hf_msg_reassembled_in = -1;
+static int hf_msg_reassembled_length = -1;
+static int hf_msg_reassembled_data = -1;
+
+static gint ett_msg_fragment = -1;
+static gint ett_msg_fragments = -1;
+
+static const fragment_items msg_frag_items = {
+    /* Fragment subtrees */
+    &ett_msg_fragment,
+    &ett_msg_fragments,
+    /* Fragment fields */
+    &hf_msg_fragments,
+    &hf_msg_fragment,
+    &hf_msg_fragment_overlap,
+    &hf_msg_fragment_overlap_conflicts,
+    &hf_msg_fragment_multiple_tails,
+    &hf_msg_fragment_too_long_fragment,
+    &hf_msg_fragment_error,
+    &hf_msg_fragment_count,
+    /* Reassembled in field */
+    &hf_msg_reassembled_in,
+    /* Reassembled length field */
+    &hf_msg_reassembled_length,
+    &hf_msg_reassembled_data,
+    /* Tag */
+    "Message fragments"
+};
+
+static reassembly_table msg_reassembly_table;
 
 guint8 processed_payload[128];
 
@@ -1320,14 +1360,17 @@ dissect_nmea(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
 
   j = tvb_find_tvb(tvb, comma, i);
   proto_tree_add_item(nmea_tree, hf_nmea_fragments, tvb, i, j-i, ENC_ASCII);
+  int fragments = tvb_get_guint8(tvb, i) - '0';
   i = j+1;
 
   j = tvb_find_tvb(tvb, comma, i);
   proto_tree_add_item(nmea_tree, hf_nmea_fragno, tvb, i, j-i, ENC_ASCII);
+  int fragmentno = tvb_get_guint8(tvb, i) - '0';
   i = j+1;
 
   j = tvb_find_tvb(tvb, comma, i);
   proto_tree_add_item(nmea_tree, hf_nmea_seqid, tvb, i, j-i, ENC_ASCII);
+  int seqid = tvb_get_guint8(tvb, i) - '0';
   i = j+1;
 
   j = tvb_find_tvb(tvb, comma, i);
@@ -1337,7 +1380,34 @@ dissect_nmea(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
   j = tvb_find_tvb(tvb, comma, i);
   proto_tree_add_item(nmea_tree, hf_nmea_payload, tvb, i, j-i, ENC_NA);
 
-  process_payload(tvb_new_subset_length(tvb, i, j-i), pinfo, tree, NULL);
+  if (fragments == 1)
+  {
+      process_payload(tvb_new_subset_length(tvb, i, j-i), pinfo, tree, NULL);
+  }
+  else
+  {
+      gboolean save_fragmented = pinfo->fragmented;
+      tvbuff_t* new_tvb = NULL;
+      fragment_head *frag_msg = NULL;
+      pinfo->fragmented = TRUE;
+      frag_msg = fragment_add_seq_check(&msg_reassembly_table,
+          tvb, i, pinfo,
+          seqid, NULL, /* ID for fragments belonging together */
+          fragmentno-1, /* fragment sequence number */
+          j-i, /* fragment length - to the end */
+          !(fragmentno == fragments)); /* More fragments? */
+
+      new_tvb = process_reassembled_data(tvb, i, pinfo,
+              "Reassembled Message", frag_msg, &msg_frag_items,
+              NULL, nmea_tree);
+      if (new_tvb)
+      {
+          process_payload(new_tvb, pinfo, tree, NULL);
+      }
+      pinfo->fragmented = save_fragmented;
+  }
+
+
   i = j+1;
 
   return tvb_captured_length(tvb);
@@ -1346,8 +1416,13 @@ dissect_nmea(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
 void
 proto_register_nmea(void)
 {
+
+  reassembly_table_register(&msg_reassembly_table, &addresses_ports_reassembly_table_functions);
+
   static gint *ett[] = {
     &ett_nmea,
+    &ett_msg_fragment,
+    &ett_msg_fragments,
   };
 
   static hf_register_info hf_nmea[] =
@@ -1358,6 +1433,18 @@ proto_register_nmea(void)
           { &hf_nmea_seqid, { "Seq Id", "nmea.seqid", FT_STRING, STR_ASCII, NULL, 0x0, "Sequence Id", HFILL} },
           { &hf_nmea_channel, { "Channel", "nmea.chn", FT_STRING, STR_ASCII, NULL, 0x0, "Channel", HFILL} },
           { &hf_nmea_payload, { "Payload", "nmea.payload", FT_STRING, STR_ASCII, NULL, 0x0, "Payload", HFILL} },
+
+          {&hf_msg_fragments,    {"Message fragments", "msg.fragments",    FT_NONE, BASE_NONE, NULL, 0x00, NULL, HFILL } },
+          {&hf_msg_fragment,    {"Message fragment", "msg.fragment",    FT_FRAMENUM, BASE_NONE, NULL, 0x00, NULL, HFILL } },
+          {&hf_msg_fragment_overlap,    {"Message fragment overlap", "msg.fragment.overlap",    FT_BOOLEAN, 0, NULL, 0x00, NULL, HFILL } },
+          {&hf_msg_fragment_overlap_conflicts,    {"Message fragment overlapping with conflicting data",    "msg.fragment.overlap.conflicts",    FT_BOOLEAN, 0, NULL, 0x00, NULL, HFILL } },
+          {&hf_msg_fragment_multiple_tails,    {"Message has multiple tail fragments",    "msg.fragment.multiple_tails",    FT_BOOLEAN, 0, NULL, 0x00, NULL, HFILL } },
+          {&hf_msg_fragment_too_long_fragment,    {"Message fragment too long", "msg.fragment.too_long_fragment",    FT_BOOLEAN, 0, NULL, 0x00, NULL, HFILL } },
+          {&hf_msg_fragment_error,    {"Message defragmentation error", "msg.fragment.error",    FT_FRAMENUM, BASE_NONE, NULL, 0x00, NULL, HFILL } },
+          {&hf_msg_fragment_count,    {"Message fragment count", "msg.fragment.count",    FT_UINT32, BASE_DEC, NULL, 0x00, NULL, HFILL } },
+          {&hf_msg_reassembled_in,    {"Reassembled in", "msg.reassembled.in",    FT_FRAMENUM, BASE_NONE, NULL, 0x00, NULL, HFILL } },
+          {&hf_msg_reassembled_length,    {"Reassembled length", "msg.reassembled.length",    FT_UINT32, BASE_DEC, NULL, 0x00, NULL, HFILL } },
+          {&hf_msg_reassembled_data,    {"Reassembled data", "msg.reassembled.data",    FT_BYTES, SEP_SPACE, NULL, 0x00, NULL, HFILL } },
     };
   proto_nmea = proto_register_protocol("nmea packet data", "NMEA", "nmea");
   proto_register_subtree_array(ett, array_length(ett));
