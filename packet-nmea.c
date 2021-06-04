@@ -8,12 +8,18 @@
  */
 
 #include "config.h"
+#include <stdio.h>
 
 #include <epan/packet.h>
 #include <epan/reassemble.h>
+#include <epan/expert.h>
+
 
 void proto_register_nmea(void);
 void proto_reg_handoff_nmea(void);
+
+static expert_field ei_nmea_checksum_bad = EI_INIT;
+
 
 static int proto_nmea = -1;
 static int proto_ais = -1;
@@ -27,6 +33,9 @@ static int hf_nmea_fragno = -1;
 static int hf_nmea_seqid = -1;
 static int hf_nmea_channel = -1;
 static int hf_nmea_payload = -1;
+static int hf_nmea_checksum = -1;
+static int hf_nmea_checksum_status = -1;
+
 
 
 static int hf_ais_msgtype = -1;
@@ -789,6 +798,19 @@ U1(gchar *buf, guint32 value) {
         g_snprintf(buf, ITEM_LABEL_LENGTH, "%.01f", value / 10.);
 }
 
+guint16 xor_checksum(tvbuff_t *tvb, guint len)
+{
+    guint8 chsm = 0;
+
+    tvb_ensure_bytes_exist(tvb, 0, len);  /* len == -1 not allowed */
+    for (guint i =0; i<len; i++)
+        chsm ^= tvb_get_guint8(tvb, i);
+    gint8 out[3];
+    sprintf(out, "%02X", chsm);
+
+   return (out[0]<<8) | out[1];
+}
+
 proto_item *
 proto_tree_add_sixbit_string(proto_tree *tree, const int hfindex, tvbuff_t *tvb,
              const guint bit_offset, const gint no_of_bits,
@@ -1395,38 +1417,41 @@ dissect_nmea(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
   proto_item *nmea_item;
   nmea_item = proto_tree_add_item(tree, proto_nmea, tvb, 0, -1, ENC_NA);
   nmea_tree = proto_item_add_subtree(nmea_item, ett_nmea);
-  int i = 0, j = 0;
+  int offset_start = 0, offset_end = 0;
   tvbuff_t * comma = tvb_new_real_data(",", 1, 1);
 
-  j = tvb_find_tvb(tvb, comma, i);
-  proto_tree_add_item(nmea_tree, hf_nmea_identifier, tvb, i, j-i, ENC_ASCII);
-  i = j+1;
+  offset_end = tvb_find_tvb(tvb, comma, offset_start);
+  proto_tree_add_item(nmea_tree, hf_nmea_identifier, tvb, offset_start, offset_end-offset_start, ENC_ASCII);
+  offset_start = offset_end+1;
 
-  j = tvb_find_tvb(tvb, comma, i);
-  proto_tree_add_item(nmea_tree, hf_nmea_fragments, tvb, i, j-i, ENC_ASCII);
-  int fragments = tvb_get_guint8(tvb, i) - '0';
-  i = j+1;
+  offset_end = tvb_find_tvb(tvb, comma, offset_start);
+  proto_tree_add_item(nmea_tree, hf_nmea_fragments, tvb, offset_start, offset_end-offset_start, ENC_ASCII);
+  int fragments = tvb_get_guint8(tvb, offset_start) - '0';
+  offset_start = offset_end+1;
 
-  j = tvb_find_tvb(tvb, comma, i);
-  proto_tree_add_item(nmea_tree, hf_nmea_fragno, tvb, i, j-i, ENC_ASCII);
-  int fragmentno = tvb_get_guint8(tvb, i) - '0';
-  i = j+1;
+  offset_end = tvb_find_tvb(tvb, comma, offset_start);
+  proto_tree_add_item(nmea_tree, hf_nmea_fragno, tvb, offset_start, offset_end-offset_start, ENC_ASCII);
+  int fragmentno = tvb_get_guint8(tvb, offset_start) - '0';
+  offset_start = offset_end+1;
 
-  j = tvb_find_tvb(tvb, comma, i);
-  proto_tree_add_item(nmea_tree, hf_nmea_seqid, tvb, i, j-i, ENC_ASCII);
-  int seqid = tvb_get_guint8(tvb, i) - '0';
-  i = j+1;
+  offset_end = tvb_find_tvb(tvb, comma, offset_start);
+  proto_tree_add_item(nmea_tree, hf_nmea_seqid, tvb, offset_start, offset_end-offset_start, ENC_ASCII);
+  int seqid = tvb_get_guint8(tvb, offset_start) - '0';
+  offset_start = offset_end+1;
 
-  j = tvb_find_tvb(tvb, comma, i);
-  proto_tree_add_item(nmea_tree, hf_nmea_channel, tvb, i, j-i, ENC_ASCII);
-  i = j+1;
+  offset_end = tvb_find_tvb(tvb, comma, offset_start);
+  proto_tree_add_item(nmea_tree, hf_nmea_channel, tvb, offset_start, offset_end-offset_start, ENC_ASCII);
+  offset_start = offset_end+1;
 
-  j = tvb_find_tvb(tvb, comma, i);
-  proto_tree_add_item(nmea_tree, hf_nmea_payload, tvb, i, j-i, ENC_NA);
+  offset_end = tvb_find_tvb(tvb, comma, offset_start);
+  proto_tree_add_item(nmea_tree, hf_nmea_payload, tvb, offset_start, offset_end-offset_start, ENC_NA);
+
+  proto_tree_add_checksum(nmea_tree, tvb, offset_end+3, hf_nmea_checksum, hf_nmea_checksum_status, &ei_nmea_checksum_bad, pinfo,
+                          xor_checksum(tvb_new_subset_remaining(tvb, 1), offset_end+1), ENC_BIG_ENDIAN, PROTO_CHECKSUM_VERIFY);
 
   if (fragments == 1)
   {
-      process_payload(tvb_new_subset_length(tvb, i, j-i), pinfo, tree, NULL);
+      process_payload(tvb_new_subset_length(tvb, offset_start, offset_end-offset_start), pinfo, tree, NULL);
   }
   else
   {
@@ -1435,13 +1460,13 @@ dissect_nmea(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
       fragment_head *frag_msg = NULL;
       pinfo->fragmented = TRUE;
       frag_msg = fragment_add_seq_check(&msg_reassembly_table,
-          tvb, i, pinfo,
+          tvb, offset_start, pinfo,
           seqid, NULL, /* ID for fragments belonging together */
           fragmentno-1, /* fragment sequence number */
-          j-i, /* fragment length - to the end */
+          offset_end-offset_start, /* fragment length - to the end */
           !(fragmentno == fragments)); /* More fragments? */
 
-      new_tvb = process_reassembled_data(tvb, i, pinfo,
+      new_tvb = process_reassembled_data(tvb, offset_start, pinfo,
               "Reassembled Message", frag_msg, &msg_frag_items,
               NULL, nmea_tree);
       if (new_tvb)
@@ -1452,7 +1477,7 @@ dissect_nmea(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
   }
 
 
-  i = j+1;
+  offset_start = offset_end+1;
 
   return tvb_captured_length(tvb);
 }
@@ -1478,6 +1503,10 @@ proto_register_nmea(void)
           { &hf_nmea_channel, { "Channel", "nmea.chn", FT_STRING, STR_ASCII, NULL, 0x0, "Channel", HFILL} },
           { &hf_nmea_payload, { "Payload", "nmea.payload", FT_STRING, STR_ASCII, NULL, 0x0, "Payload", HFILL} },
 
+          { &hf_nmea_checksum,{ "Checksum", "lapd.checksum", FT_UINT16, BASE_HEX, NULL, 0x0, "Details at: https://www.wireshark.org/docs/wsug_html_chunked/ChAdvChecksums.html", HFILL }},
+          { &hf_nmea_checksum_status,{ "Checksum Status", "lapd.checksum.status", FT_UINT8, BASE_NONE, VALS(proto_checksum_vals), 0x0, NULL, HFILL }},
+
+
           {&hf_msg_fragments,    {"Message fragments", "msg.fragments",    FT_NONE, BASE_NONE, NULL, 0x00, NULL, HFILL } },
           {&hf_msg_fragment,    {"Message fragment", "msg.fragment",    FT_FRAMENUM, BASE_NONE, NULL, 0x00, NULL, HFILL } },
           {&hf_msg_fragment_overlap,    {"Message fragment overlap", "msg.fragment.overlap",    FT_BOOLEAN, 0, NULL, 0x00, NULL, HFILL } },
@@ -1499,6 +1528,16 @@ proto_register_nmea(void)
   static gint *ettais[] = {
     &ett_ais,
   };
+
+  static ei_register_info ei[] = {
+      { &ei_nmea_checksum_bad, { "nmea.checksum_bad.expert", PI_CHECKSUM, PI_WARN, "Bad FCS", EXPFILL }},
+  };
+
+  expert_module_t* expert_nmea;
+
+  expert_nmea = expert_register_protocol(proto_nmea);
+  expert_register_field_array(expert_nmea, ei, array_length(ei));
+
 
   static hf_register_info hf_ais[] =
       {
